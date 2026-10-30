@@ -4,7 +4,7 @@ Game-inspired city map for iPhone, built with Expo SDK 58, React Native 0.88, Ty
 
 ## Run the app
 
-Run commands from `/Users/abhishekchoudhary/Documents/GameNav`, which contains the map implementation. The nested `gamenav/` directory is a separate starter app and has not been modified.
+Run commands from the repository root, which contains the map implementation. The nested `gamenav/` directory is a separate starter app and has not been modified.
 
 ```sh
 npm ci
@@ -32,7 +32,7 @@ You can build, install, and run GameNav directly on a physical iPhone using a fr
    ```
 
 ### 2. Dependencies & Build Command
-From the root `/Users/abhishekchoudhary/Documents/GameNav` directory:
+From the root project directory:
 
 ```sh
 # 1. Install CocoaPods dependencies (generates GameNav.xcworkspace)
@@ -75,7 +75,7 @@ xcrun devicectl device process launch --device <YOUR_DEVICE_UDID> \
 
 ## Verification & Device Acceptance Results
 
-Physical device testing was completed on an **iPhone 14 (iOS physical device, UDID: `00008110-00190C28119A201E`)**:
+Physical device testing was completed on a connected **physical iPhone 14**:
 
 1. **Native Compilation & Signing**: Compiled all 127 targets in Xcode 27.2 with Hermes engine and MapLibre Native; signed automatically under Personal Team `WJ7K33HG5V`.
 2. **App Installation & Launch**: Successfully installed via `devicectl` (`bundleID: com.abhishekchoudhary.gamenav`) and launched with Expo Dev Client.
@@ -152,7 +152,7 @@ After installing a signed development build:
 
 All phases of local development, native compilation, free Apple Account signing, physical iPhone installation, and on-device runtime validation are **complete and verified**:
 - **Local Xcode Build & Free Signing**: Built locally targeting iPhone 14 with personal team `WJ7K33HG5V`.
-- **Physical Device Execution**: Verified on physical hardware (`00008110-00190C28119A201E`).
+- **Physical Device Execution**: Verified on physical hardware (iPhone 14, iOS 18).
 - **Live Vector Map & HUD**: Verified via live screen capture showing 3D buildings, vehicle tracking, GPS fix reception (±14 m), and theme controls.
 - **Code Quality**: Lint (`expo lint`), TypeScript (`tsc --noEmit`), and 6/6 test suites pass with zero errors.
 
