@@ -1,51 +1,72 @@
-import { ActivityIndicator, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
-import { colors, hud } from './HUD';
+import { useState } from 'react';
+import { ActivityIndicator, Alert, Linking, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import type { Place } from '../search/places';
 import { formatDistance, formatDuration, ROUTING_CREDIT, ROUTING_CREDIT_URL } from '../routing/routes';
 import type { RouteState } from '../routing/useDrivingRoute';
 
-export function DestinationCard({ place, moving, onView, onChange, onClear, routing, canRoute, startChanged, onRoute, onCancel }: { place: Place; moving: boolean; onView: () => void; onChange: () => void; onClear: () => void; routing: RouteState; canRoute: boolean; startChanged: boolean; onRoute: () => void; onCancel: () => void }) {
+function openCredit(url: string) {
+  void Linking.openURL(url).catch(() => Alert.alert('Link unavailable', 'Please try again when you have a connection.'));
+}
+
+type Props = { place: Place; moving: boolean; onView: () => void; onChange: () => void; onClear: () => void; routing: RouteState; canRoute: boolean; startChanged: boolean; onRoute: () => void; onCancel: () => void };
+
+export function DestinationCard({ place, moving, onView, onChange, onClear, routing, canRoute, startChanged, onRoute, onCancel }: Props) {
+  const [details, setDetails] = useState(false);
+  const { height } = useWindowDimensions();
   const route = routing.route;
-  const actions = [{ label: route ? 'VIEW ROUTE' : 'VIEW PIN', onPress: onView }, { label: 'CHANGE', onPress: onChange }, { label: 'CLEAR', onPress: onClear }];
+  const loading = routing.status === 'loading';
+  const showDetails = details && !moving;
   return <View style={s.card}>
-    <Text style={s.eyebrow}>{route ? 'DRIVING ROUTE PREVIEW' : 'DESTINATION PIN'}</Text>
-    <Text style={s.name} numberOfLines={moving ? 1 : 2}>{place.name}</Text>
-    {!moving && !!place.address && <Text style={hud.muted} numberOfLines={2}>{place.address}</Text>}
+    <View style={s.header}>
+      <Text numberOfLines={1} style={s.name}>{place.name}</Text>
+      {!moving && <Pressable accessibilityRole="button" accessibilityLabel="Clear destination and route" onPress={onClear} style={s.close}><Text style={s.closeText}>×</Text></Pressable>}
+    </View>
     {route ? <>
-      <Text style={s.estimate}>{formatDistance(route.distance)} · ~{formatDuration(route.duration)}</Text>
-      <Text style={s.note}>{startChanged ? 'Start position changed. Recalculate when stopped.' : 'Estimate at calculation · no live traffic or turn guidance'}</Text>
-      {!moving && Math.max(route.startOffset, route.endOffset) > 30 && <Text style={s.note}>Road access: {formatDistance(route.startOffset)} from start · {formatDistance(route.endOffset)} from pin. Access paths aren’t included.</Text>}
-    </> : <Text accessibilityLiveRegion="polite" style={s.note}>{routing.status === 'error' ? routing.message : routing.status === 'loading' ? 'Finding a driving route…' : 'Route not calculated'}</Text>}
+      <View style={s.summary}><Text style={s.duration}>~{formatDuration(route.duration)}</Text><Text style={s.distance}>{formatDistance(route.distance)}</Text></View>
+      <Text style={s.note}>{startChanged ? 'Start changed · recalculate in Details' : 'Route preview · no live traffic or turn guidance'}</Text>
+    </> : <Text accessibilityLiveRegion="polite" style={s.note}>{routing.status === 'error' ? routing.message : loading ? 'Finding a driving route…' : !canRoute ? 'Waiting for a precise GPS position' : 'Get a driving route from your location'}</Text>}
     {!moving && <>
-      <Pressable accessibilityRole="button" accessibilityLabel={routing.status === 'loading' ? 'Cancel route calculation' : route ? 'Recalculate driving route' : 'Get driving route'} disabled={routing.status !== 'loading' && !canRoute} onPress={routing.status === 'loading' ? onCancel : onRoute} style={({ pressed }) => [s.routeButton, (pressed || (!canRoute && routing.status !== 'loading')) && { opacity: 0.45 }]}>
-        {routing.status === 'loading' && <ActivityIndicator color="#131313" size="small" />}<Text style={s.routeButtonText}>{routing.status === 'loading' ? 'CANCEL' : route ? 'RECALCULATE ROUTE' : routing.status === 'error' ? 'RETRY DRIVING ROUTE' : 'GET DRIVING ROUTE'}</Text>
-      </Pressable>
-      {!canRoute && <Text style={s.note}>A fresh, precise GPS position is needed to calculate.</Text>}
-      <Text style={s.note}>Request shares GPS and destination with {ROUTING_CREDIT}.</Text>
-      <View style={s.credits}>
-        <Pressable accessibilityRole="link" onPress={() => { void Linking.openURL(ROUTING_CREDIT_URL).catch(() => {}); }} style={s.credit}><Text style={s.creditText}>Routes: {ROUTING_CREDIT}</Text></Pressable>
-        <Pressable accessibilityRole="link" onPress={() => { void Linking.openURL('https://www.openstreetmap.org/fixthemap').catch(() => {}); }} style={s.credit}><Text style={s.creditText}>Fix the map ↗</Text></Pressable>
+      <View style={s.actions}>
+        <Pressable accessibilityRole="button" accessibilityLabel={route ? 'View whole route' : loading ? 'Cancel route calculation' : 'Get driving route'} disabled={!route && !loading && !canRoute} onPress={route ? onView : loading ? onCancel : onRoute} style={({ pressed }) => [s.primary, (pressed || (!route && !loading && !canRoute)) && s.dim]}>
+          {loading && <ActivityIndicator color="#ffffff" size="small" />}<Text style={s.primaryText}>{route ? 'Overview' : loading ? 'Cancel' : routing.status === 'error' ? 'Try again' : 'Get route'}</Text>
+        </Pressable>
+        <Pressable accessibilityRole="button" onPress={onChange} style={s.secondary}><Text style={s.secondaryText}>Change</Text></Pressable>
+        <Pressable accessibilityRole="button" accessibilityLabel={showDetails ? 'Hide route details' : 'Show route details'} accessibilityState={{ expanded: showDetails }} onPress={() => setDetails(value => !value)} style={s.secondary}><Text style={s.secondaryText}>{showDetails ? 'Less' : 'Details'}</Text></Pressable>
       </View>
+      {!route && <Text style={s.disclosure}>Uses your GPS and destination · {ROUTING_CREDIT}</Text>}
     </>}
-    {moving && route && <Pressable accessibilityRole="link" onPress={() => { void Linking.openURL(ROUTING_CREDIT_URL).catch(() => {}); }} style={s.credit}><Text style={s.creditText}>Routes: {ROUTING_CREDIT} · © OpenStreetMap</Text></Pressable>}
-    {!moving && <View style={s.actions}>
-      {actions.map(({ label, onPress }) => <Pressable key={label} accessibilityRole="button" onPress={onPress} style={({ pressed }) => [s.action, pressed && { opacity: 0.5 }]}><Text style={s.actionText}>{label}</Text></Pressable>)}
-    </View>}
+    {showDetails && <ScrollView style={{ maxHeight: height * 0.25 }} contentContainerStyle={s.details} showsVerticalScrollIndicator>
+      {!!place.address && <Text style={s.note}>{place.address}</Text>}
+      {route && <>
+        <Text style={s.note}>Estimates are totals at calculation, not remaining travel time.</Text>
+        <Text style={s.note}>Road access: {formatDistance(route.startOffset)} from start, {formatDistance(route.endOffset)} from pin. Access paths are not included.</Text>
+        <Pressable accessibilityRole="button" disabled={!canRoute} onPress={onRoute} style={[s.detailButton, !canRoute && s.dim]}><Text style={s.secondaryText}>Recalculate from my location</Text></Pressable>
+      </>}
+      {!route && <Pressable accessibilityRole="button" onPress={onView} style={s.detailButton}><Text style={s.secondaryText}>Show destination pin</Text></Pressable>}
+      <Text style={s.note}>A route request shares your GPS position and destination with {ROUTING_CREDIT}.</Text>
+      <Pressable accessibilityRole="link" onPress={() => openCredit(ROUTING_CREDIT_URL)} style={s.detailButton}><Text style={s.secondaryText}>About {ROUTING_CREDIT} ↗</Text></Pressable>
+      <Pressable accessibilityRole="link" onPress={() => openCredit('https://www.openstreetmap.org/fixthemap')} style={s.detailButton}><Text style={s.secondaryText}>Report a map issue ↗</Text></Pressable>
+    </ScrollView>}
   </View>;
 }
 
 const s = StyleSheet.create({
-  card: { padding: 12, borderWidth: 1, borderLeftWidth: 3, borderColor: colors.border, borderLeftColor: '#b56bff', backgroundColor: colors.panel, gap: 4 },
-  eyebrow: { color: '#c594ff', fontSize: 9, fontWeight: '800', letterSpacing: 1.8 },
-  name: { color: colors.text, fontSize: 17, fontWeight: '700' },
-  note: { color: colors.muted, fontSize: 11, lineHeight: 18 },
-  estimate: { color: colors.text, fontSize: 22, fontWeight: '800', marginVertical: 3 },
-  routeButton: { minHeight: 44, backgroundColor: '#b56bff', alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8, marginTop: 5 },
-  routeButtonText: { color: '#131313', fontWeight: '800', fontSize: 11, letterSpacing: 1 },
-  credits: { flexDirection: 'row', justifyContent: 'space-between', flexWrap: 'wrap' },
-  credit: { minHeight: 44, justifyContent: 'center' },
-  creditText: { color: colors.muted, fontSize: 10 },
-  actions: { flexDirection: 'row', gap: 8, marginTop: 4 },
-  action: { flex: 1, minHeight: 44, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.border },
-  actionText: { color: colors.text, fontSize: 10, fontWeight: '800', letterSpacing: 1 },
+  card: { paddingHorizontal: 16, paddingBottom: 8, paddingTop: 10, borderRadius: 24, backgroundColor: '#202126', borderWidth: 1, borderColor: '#3b3c43', boxShadow: '0px 4px 20px rgba(0, 0, 0, 0.24)' },
+  header: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 34 },
+  name: { flex: 1, color: '#fafafa', fontSize: 17, fontWeight: '600' },
+  close: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center', marginRight: -8 },
+  closeText: { color: '#bfc0c7', fontSize: 25 },
+  summary: { flexDirection: 'row', alignItems: 'baseline', gap: 10, marginBottom: 4, flexWrap: 'wrap' },
+  duration: { color: '#c7a6ff', fontSize: 27, fontWeight: '700' },
+  distance: { color: '#dedee3', fontSize: 16 },
+  note: { color: '#bfc0c7', fontSize: 12, lineHeight: 18 },
+  actions: { flexDirection: 'row', gap: 8, marginTop: 12 },
+  primary: { flex: 1.2, minHeight: 44, backgroundColor: '#7955d9', borderRadius: 22, justifyContent: 'center', alignItems: 'center', flexDirection: 'row', gap: 8, paddingHorizontal: 12 },
+  primaryText: { color: '#ffffff', fontSize: 14, fontWeight: '600' },
+  secondary: { flex: 1, minHeight: 44, borderRadius: 22, backgroundColor: '#32333a', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6 },
+  secondaryText: { color: '#e5dcff', fontSize: 13, fontWeight: '500' },
+  dim: { opacity: 0.45 },
+  disclosure: { color: '#a9aab3', fontSize: 10, lineHeight: 16 },
+  details: { paddingTop: 12, paddingBottom: 4, gap: 8 },
+  detailButton: { minHeight: 44, justifyContent: 'center' },
 });

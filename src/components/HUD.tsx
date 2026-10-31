@@ -42,16 +42,16 @@ export const hud = StyleSheet.create({
 });
 
 const s = StyleSheet.create({
-  control: { width: 48, height: 48, borderRadius: 2, backgroundColor: colors.panel, borderColor: colors.border, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
-  controlActive: { borderColor: colors.accent, backgroundColor: colors.accent },
+  control: { width: 48, height: 48, borderRadius: 24, backgroundColor: '#202126', borderColor: '#3b3c43', borderWidth: 1, alignItems: 'center', justifyContent: 'center', boxShadow: '0px 2px 8px rgba(0, 0, 0, 0.18)' },
+  controlActive: { borderColor: '#c7a6ff', backgroundColor: '#c7a6ff' },
   glyph: { color: colors.text, fontSize: 27, fontWeight: '600' },
   pressed: { opacity: 0.65 },
-  switcher: { flexDirection: 'row', padding: 3, backgroundColor: colors.panel, borderRadius: 2, borderWidth: 1, borderColor: colors.border },
-  theme: { flex: 1, minHeight: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 0 },
+  switcher: { flexDirection: 'row', padding: 3, backgroundColor: '#32333a', borderRadius: 16 },
+  theme: { flex: 1, minHeight: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 13 },
   selected: { backgroundColor: colors.accent },
-  themeText: { fontSize: 12, letterSpacing: 1.3, color: colors.muted, fontWeight: '800' },
+  themeText: { fontSize: 13, color: colors.muted, fontWeight: '600' },
   selectedText: { color: '#171a15' },
-  notice: { borderRadius: 2, backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border, padding: 13, gap: 5 },
+  notice: { borderRadius: 18, backgroundColor: '#202126', borderWidth: 1, borderColor: '#3b3c43', padding: 13, gap: 5 },
   noticeTop: { flexDirection: 'row', alignItems: 'center', gap: 9 },
   noticeDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: colors.amber },
   noticeTitle: { flex: 1, color: colors.text, fontWeight: '700', fontSize: 13 },
