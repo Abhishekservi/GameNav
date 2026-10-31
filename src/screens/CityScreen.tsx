@@ -1,4 +1,4 @@
-import { Camera, Images, Layer, LayerAnnotation, LogManager, Map, type CameraRef, type MapRef } from '@maplibre/maplibre-react-native';
+import { Camera, GeoJSONSource, Images, Layer, LayerAnnotation, LogManager, Map, type CameraRef, type MapRef } from '@maplibre/maplibre-react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Linking, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
@@ -7,7 +7,9 @@ import { Control, Notice, SpeedDisplay, ThemeSwitcher, colors, hud } from '../co
 import { DestinationCard } from '../components/DestinationCard';
 import { useReducedMotion } from '../hooks/useReducedMotion';
 import { useGPSState } from '../location/GPSProvider';
-import { speedKmh } from '../location/position';
+import { isUsableFix, speedKmh } from '../location/position';
+import { distanceBetween } from '../routing/routes';
+import { useDrivingRoute } from '../routing/useDrivingRoute';
 import { IS_DEFAULT_PROVIDER, MUMBAI, createMapStyle, type MapTheme } from '../maps/style';
 import { useDestination } from '../search/DestinationProvider';
 
@@ -20,6 +22,10 @@ export default function CityScreen() {
   const smallScreen = height < 740 || fontScale > 1.3;
   const gps = useGPSState();
   const { destination, revision: destinationRevision, clear: clearDestination } = useDestination();
+  const { state: routing, calculate: calculateRoute, clear: clearRoute } = useDrivingRoute(destinationRevision);
+  const route = routing.route;
+  const routeGeometry = useMemo(() => route ? { type: 'Feature' as const, properties: {}, geometry: route.geometry } : null, [route]);
+  const viewedRoute = useRef<typeof route>(null);
   const viewedDestinationRevision = useRef(0);
   const reducedMotion = useReducedMotion();
   const camera = useRef<CameraRef>(null);
@@ -44,6 +50,23 @@ export default function CityScreen() {
   const coordinates: [number, number] | null = gps.fix ? [gps.fix.coords.longitude, gps.fix.coords.latitude] : null;
   const latitude = coordinates?.[1];
   const longitude = coordinates?.[0];
+  const startChanged = !!route && !!coordinates && gps.fresh && distanceBetween(route.origin, coordinates) > 150;
+  const canRoute = !moving && gps.fresh && !!gps.fix && isUsableFix(gps.fix);
+
+  const getRoute = () => {
+    if (!destination || !canRoute || !gps.fix || !isUsableFix(gps.fix)) return;
+    viewedRoute.current = null;
+    void calculateRoute([gps.fix.coords.longitude, gps.fix.coords.latitude], destination.coordinates);
+  };
+  const viewRoute = useCallback(() => {
+    if (!route || mapState !== 'ready') return;
+    setFollowing(false); setCompact(true); firstFollow.current = true;
+    camera.current?.fitBounds(route.bounds, { bearing: 0, pitch: 0, duration: reducedMotion ? 0 : 1000, padding: { top: insets.top + 75, bottom: Math.min(height * 0.55, insets.bottom + 430), left: 40, right: 40 } });
+    setShowBuildings(false);
+  }, [route, mapState, reducedMotion, insets.top, insets.bottom, height]);
+  useEffect(() => {
+    if (route && route !== viewedRoute.current && mapState === 'ready' && !moving) { viewedRoute.current = route; viewRoute(); }
+  }, [route, mapState, moving, viewRoute]);
 
   useEffect(() => {
     LogManager.onLog(({ message, level }) => {
@@ -126,6 +149,12 @@ export default function CityScreen() {
       onRegionWillChange={event => { if (event.nativeEvent.userInteraction) { setFollowing(false); firstFollow.current = true; } }}>
       <Camera ref={camera} initialViewState={initialViewState} minZoom={3} maxZoom={19} />
       <Images images={vehicleImages} />
+      {routeGeometry && <GeoJSONSource id="driving-route" data={routeGeometry}>
+        <Layer id="route-outline" type="line" layout={{ 'line-cap': 'round', 'line-join': 'round' }} paint={{ 'line-color': '#21142e', 'line-width': 10, 'line-opacity': 0.95 }} />
+        <Layer id="route-purple" type="line" layout={{ 'line-cap': 'round', 'line-join': 'round' }} paint={{ 'line-color': '#ad4cff', 'line-width': 6 }} />
+      </GeoJSONSource>}
+      {route && <LayerAnnotation id="route-start" lngLat={route.start}><Layer id="route-start-dot" type="circle" paint={{ 'circle-color': '#f5f5f5', 'circle-radius': 5, 'circle-stroke-color': '#ad4cff', 'circle-stroke-width': 3 }} /></LayerAnnotation>}
+      {route && <LayerAnnotation id="route-road-end" lngLat={route.end}><Layer id="route-end-dot" type="circle" paint={{ 'circle-color': '#ad4cff', 'circle-radius': 5, 'circle-stroke-color': '#f5f5f5', 'circle-stroke-width': 2 }} /></LayerAnnotation>}
       {coordinates && <LayerAnnotation id="vehicle-position" lngLat={coordinates} animated={!reducedMotion} animationDuration={800}>
         <Layer id="vehicle-halo" type="circle" paint={{ 'circle-radius': theme === 'arcade' ? 19 : 26, 'circle-color': '#111610', 'circle-opacity': gps.fresh ? 0.22 : 0.08 }} />
         <Layer id="vehicle" type="symbol" layout={{ 'icon-image': theme === 'arcade' ? 'direction' : 'vehicle', 'icon-size': theme === 'arcade' ? 0.46 : 0.55, 'icon-allow-overlap': true, 'icon-ignore-placement': true, 'icon-rotation-alignment': 'map', 'icon-pitch-alignment': 'viewport', 'icon-rotate': gps.heading }} paint={{ 'icon-opacity': gps.fresh ? 1 : 0.35 }} />
@@ -151,7 +180,7 @@ export default function CityScreen() {
     </View>
 
     <View pointerEvents="box-none" style={[s.bottom, { bottom: insets.bottom + 48, left: Math.max(insets.left, 18), right: Math.max(insets.right, 18) }]}>
-      {destination && <DestinationCard place={destination} moving={moving} onView={viewDestination} onChange={openSearch} onClear={clearDestination} />}
+      {destination && <DestinationCard place={destination} moving={moving} onView={route ? viewRoute : viewDestination} onChange={openSearch} onClear={clearDestination} routing={routing} canRoute={canRoute} startChanged={startChanged} onRoute={getRoute} onCancel={clearRoute} />}
       <View style={s.mapControls} pointerEvents="box-none">
         {!moving && <Pressable accessibilityRole="button" accessibilityLabel="Explore Mumbai city center" onPress={overview} style={s.cityChip}><Text style={s.cityText}>MUMBAI</Text><Text style={s.citySub}>CITY MAP ↗</Text></Pressable>}
         <View style={s.controlStack}>
@@ -163,7 +192,7 @@ export default function CityScreen() {
       {!cleanMap && (!destination || moving) && <SpeedDisplay speed={speed}>
         <Text style={hud.eyebrow}>{following && gps.fresh ? headingUp ? 'HEADING UP' : 'NORTH UP' : 'FREE EXPLORE'}</Text>
         <Text style={hud.strong}>{gps.fresh ? 'GPS TRACKING' : 'CITY OVERVIEW'}</Text>
-        <Text style={hud.muted}>{gps.fresh ? `GPS ±${Math.round(gps.fix?.coords.accuracy ?? 0)} m · No active route` : 'Mumbai overview · No active route'}</Text>
+        <Text style={hud.muted}>{gps.fresh ? `GPS ±${Math.round(gps.fix?.coords.accuracy ?? 0)} m · ${route ? 'Route preview only' : 'No active route'}` : `GPS unavailable · ${route ? 'Saved route preview' : 'No active route'}`}</Text>
       </SpeedDisplay>}
       <View style={s.footerRow}><Text style={s.footerText}>{moving ? 'Keep your eyes on the road' : `${showBuildings ? '3D VIEW' : '2D MAP'} · ${gps.fresh ? 'GPS LIVE' : 'GPS UNAVAILABLE'}`}</Text><Pressable accessibilityRole="button" accessibilityLabel={compact ? 'Show destination search, themes, and speed panel' : 'Expand map and hide panels'} disabled={moving} onPress={() => setCompact(value => !value)} style={s.focusButton}><Text style={s.focusText}>{moving ? 'FOCUS ON' : compact ? 'SHOW HUD' : 'FULL MAP'}</Text></Pressable></View>
     </View>

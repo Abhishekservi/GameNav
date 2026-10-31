@@ -85,7 +85,7 @@ Physical device testing was completed on a connected **physical iPhone 14**:
 6. **Live GPS & Vehicle Marker**: Foreground location permissions granted; live GPS fixes received; position interpolated between updates with real course/compass heading. GTA V now uses an original white direction arrow; Classic keeps the vehicle icon.
 7. **Attribution**: Persistent attribution links for OpenFreeMap, OpenMapTiles, and OpenStreetMap remain reachable along the bottom edge.
 8. **Automated Verification**:
-   - `npm test`: 19/19 tests passed (GPS validation, speed conversion, compass shortest arc, MapLibre styles, and place-search validation/recovery).
+   - `npm test`: 31/31 tests passed (GPS validation, speed conversion, compass shortest arc, MapLibre styles, and place-search validation/recovery).
    - `npx expo lint`: Clean (0 errors).
    - `npx tsc --noEmit`: Clean (0 type errors).
 
@@ -114,7 +114,7 @@ The configured bundle identifier is `com.abhishekchoudhary.gamenav`. The initial
 - Permission recovery, service-disabled and weak-GPS states, stale-position indication, map loading timeout, native tile-error notices, and map/GPS retry controls.
 - Safe-area-aware HUD, Reduce Motion support, 44-point or larger touch targets, and a simplified interface while moving. Search and theme controls hide while moving. The default full-map view hides the larger panels while stopped; SEARCH opens real place search directly from the full-map view. SHOW HUD reveals themes and speed, and FULL MAP hides the larger panels again. The speed panel returns automatically when moving.
 
-Destination search is live: submit a place/address query, select a real result, and inspect its purple pin and destination card. There is **no routing, ETA, traffic, speed-limit detection, turn guidance, background tracking, or offline map download**. GPS speed is informational. Keep eyes on the road and use a passenger for setup.
+Destination search is live: submit a place/address query, select a real result, and inspect its purple pin and destination card. A driving-route preview can calculate a real road path, distance, and estimated travel duration. There is **no live traffic, live arrival ETA, speed-limit detection, turn guidance, automatic rerouting, background tracking, or offline map download**. GPS speed is informational. Keep eyes on the road and use a passenger for setup.
 
 ## Map provider and attribution
 
@@ -134,7 +134,7 @@ npx expo-doctor
 npx expo export --platform ios --output-dir dist/ios-check
 ```
 
-The Node tests use built-in TypeScript stripping (Node 22.18+ or 24+). The 19 tests cover invalid/stale GPS fixes, unknown speeds, compass wraparound, both themes in 2D/3D, and the search client: coordinate validation, deduplication, query encoding, caching/expiry, cancellation, provider errors/cooldowns, timeouts, and serialized requests. The export check verifies the Hermes JavaScript bundle and assets; it does not compile or sign the native iOS app.
+The Node tests use built-in TypeScript stripping (Node 22.18+ or 24+). The 31 tests cover invalid/stale GPS fixes, unknown speeds, compass wraparound, both themes in 2D/3D, the routing client (described below), and the search client: coordinate validation, deduplication, query encoding, caching/expiry, cancellation, provider errors/cooldowns, timeouts, and serialized requests. The export check verifies the Hermes JavaScript bundle and assets; it does not compile or sign the native iOS app.
 
 ## Physical iPhone acceptance checks
 
@@ -154,7 +154,7 @@ All phases of local development, native compilation, free Apple Account signing,
 - **Local Xcode Build & Free Signing**: Built locally targeting iPhone 14 with personal team `WJ7K33HG5V`.
 - **Physical Device Execution**: Verified on physical hardware (iPhone 14, iOS 27.0.1).
 - **Live Vector Map & HUD**: Verified via live screen capture showing 3D buildings, vehicle tracking, GPS fix reception (±14 m), and theme controls.
-- **Code Quality**: Lint (`expo lint`), TypeScript (`tsc --noEmit`), and 19/19 tests pass with zero errors.
+- **Code Quality**: Lint (`expo lint`), TypeScript (`tsc --noEmit`), and 31/31 tests pass with zero errors.
 
 The dependency audit currently reports 9 entries (3 high, 6 low), including advisories inherited through Expo tooling. Its proposed automatic fix downgrades Expo to SDK 51, so that incompatible change was not applied. Review dependency advisories before production store release.
 
@@ -166,7 +166,7 @@ GTA V was restyled against user-provided GTA V pause-map screenshots while retai
 
 Tap **SEARCH** on the full map, or **Find a destination** in the expanded HUD. Enter at least three characters and press Search. You can also tap a sample landmark. Search requests run only after an explicit submit, not on every keystroke.
 
-Select a result to return to the map. The camera moves to the result's coordinates and an original purple pin marks the destination. The destination card offers **VIEW PIN**, **CHANGE**, and **CLEAR**. Destination selection is retained for the current app session. City/country results use a wider camera zoom than individual landmarks. Selecting a destination does not calculate a route or start navigation.
+Select a result to return to the map. The camera moves to the result's coordinates and an original purple pin marks the destination. The destination card offers **VIEW PIN**, **CHANGE**, and **CLEAR**. Destination selection is retained for the current app session. City/country results use a wider camera zoom than individual landmarks. Selecting a destination does not automatically calculate a route or start navigation. Use GET DRIVING ROUTE on the map while stopped to request a preview.
 
 The default service is [Photon](https://photon.komoot.io/), using OpenStreetMap data. It requires no API key for modest development use. Its public host is subject to fair-use throttling and availability changes; configure a supported hosted or self-hosted Photon-compatible HTTPS endpoint before wider deployment. Set `EXPO_PUBLIC_SEARCH_URL` in `.env.local` and restart Metro to change the endpoint. Credentials marked `EXPO_PUBLIC_*` are visible in the app bundle; do not put private server keys there.
 
@@ -183,3 +183,45 @@ The native Debug build succeeded in Xcode 27.2 with automatic Personal Team sign
 On-device verification exposed a search modal safe-area issue. A provider at the modal root now measures its own insets; the corrected header was visually checked below the iPhone notch and status bar. This spacing fix loads through Metro and requires no additional native rebuild. Lint, TypeScript, and the iOS Hermes export passed after the fix; all 19 existing tests passed during build validation.
 
 Local ignored build output: `.expo/ios-build/Build/Products/Debug-iphoneos/GameNav.app`. Build log: `.expo/ios-build.log`. The development app still needs a reachable Metro server; routing remains unimplemented.
+
+
+## Real driving-route previews
+
+After choosing a destination, tap **GET DRIVING ROUTE** while stopped with a fresh, precise GPS fix. The app sends that position and the destination to the configured OSRM-compatible car endpoint. The default is [FOSSGIS / OSRM](https://routing.openstreetmap.de/about.html), a shared public service with a maximum of one request per second, no heavy usage, and no service guarantee. The app makes explicit requests only, serializes them at 1.5-second intervals, caches up to eight routes in memory for five minutes, and honors HTTP 429 cooldowns. Configure a supported hosted or self-hosted car service before wider distribution; all EXPO_PUBLIC variables are public configuration.
+
+A successful response draws the returned road geometry in purple, fits the camera to it, and displays distance and approximate travel duration. **VIEW ROUTE** shows it again; **RECALCULATE ROUTE** uses your current GPS position; **CHANGE** or **CLEAR** cancels pending work and removes the previous route. Results are retained only for the current session. GPS changes do not trigger network requests. Moving more than 150 meters from the requested start prompts manual recalculation when stopped. The displayed distance and duration remain the totals at calculation, not live remaining guidance or traffic-aware arrival estimates.
+
+Road endpoints may differ from the exact GPS/destination pin. Requests limit snapping to 500 meters; the client validates returned geometry/endpoints and shows access offsets above 30 meters. Access paths are not drawn or included in the road-route estimates. Unreachable places, malformed responses, offline/timeout and busy-service errors have explicit retry/cancel states; the app never draws a fabricated straight-line route. Route requests use a 15-second timeout. Search still sends only its fixed city bias; precise GPS is sent to the routing provider only when a route is requested.
+
+Provider attribution and an OpenStreetMap **Fix the map** link are available in the destination card. Existing map credits remain visible. Route setup controls hide while moving. This feature is a route preview, with no turn prompts, voice guidance, off-route detection, background navigation, or automatic rerouting.
+
+Validation includes 12 routing tests (31 total): route geometry/bounds, units, invalid/no-route responses, road snapping, coordinate/config validation, caching/expiry, cancellation, timeouts, cooldowns and request spacing. A real public Mumbai request returned 129 geometry points over 4,099 meters; its response passed the same parser used by the app. Physical-device confirmation is recorded separately from these automated/client checks.
+
+## Use GameNav away from the Mac
+
+Build a **Release** configuration to embed the JavaScript and assets instead of downloading them from Metro:
+
+```sh
+npm run build:ios:standalone
+```
+
+Select the connected physical iPhone and use the existing free Personal Team signing. This replaces the development app with the same bundle identifier. The app opens directly from its icon without the development launcher or a running Mac. Changes made later require rebuilding and reinstalling this Release app.
+
+For the direct Xcode workflow used in this repository:
+
+```sh
+xcodebuild -workspace ios/GameNav.xcworkspace -scheme GameNav \
+  -configuration Release -destination 'generic/platform=iOS' \
+  -derivedDataPath .expo/ios-build \
+  -allowProvisioningUpdates -allowProvisioningDeviceRegistration build
+xcrun devicectl device install app --device <YOUR_DEVICE_UDID> \
+  .expo/ios-build/Build/Products/Release-iphoneos/GameNav.app
+xcrun devicectl device process launch --device <YOUR_DEVICE_UDID> \
+  com.abhishekchoudhary.gamenav
+```
+
+This removes the Mac/Metro requirement, **not the internet requirement**: maps, place search, and new routes use network services over Wi-Fi or cellular. GPS works on the phone, but offline maps and offline routing are not implemented. [Apple Personal Team profiles expire seven days after issuance](https://developer.apple.com/help/account/basics/about-your-developer-account); reconnect to Xcode and rebuild/reinstall when signing expires. The installed profile's actual expiry may be sooner than seven days from the latest rebuild if Xcode reuses a profile. TestFlight or App Store distribution needs paid Apple Developer Program membership; no enrollment or purchase is part of this workflow.
+
+Standalone verification: the Release build succeeded and passed strict/deep code-signature verification. The installed app contains a 2.6 MB embedded Hermes bundle. Metro was stopped, port 8081 was confirmed closed, and the app was launched without a development URL on the physical iPhone 14. The map, original position marker, GPS LIVE status, and attribution were visually confirmed. The installed profile expires on 7 November 2026 at 01:28 AM India time. This verifies independence from Metro; internet services and free-signing expiry still apply.
+
+The physical iPhone also displayed a real purple driving route to the selected destination with distance, estimated duration, road-access offsets, and OSRM attribution. The user confirmed the route and estimates. This was checked in the standalone Release app with Metro stopped. The initial route card was too large; interface simplification is the next revision.

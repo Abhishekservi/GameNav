@@ -90,7 +90,7 @@ function SearchContent() {
       </>}
 
       <View style={s.footer}>
-        <Text style={s.routeNote}>Choose a pin now. Route guidance is not connected yet.</Text>
+        <Text style={s.routeNote}>Choose a pin, then request a driving route on the map. Turn guidance is not connected yet.</Text>
         <View style={s.attributionRow}>
           {[['Search by ' + SEARCH_PROVIDER, 'https://photon.komoot.io/'], ['© OpenStreetMap contributors', 'https://www.openstreetmap.org/copyright']].map(([label, url]) => <Pressable key={label} accessibilityRole="link" onPress={() => { void Linking.openURL(url).catch(() => Alert.alert('Link unavailable', 'Please try again when you have a connection.')); }} style={s.credit}><Text style={s.creditText}>{label}</Text></Pressable>)}
         </View>
