@@ -4,8 +4,10 @@ import { validateStyleMin } from '@maplibre/maplibre-gl-style-spec';
 import { createMapStyle } from '../src/maps/style.ts';
 
 for (const theme of ['classic', 'arcade']) {
-  test(`${theme} style passes the installed MapLibre style validator`, () => {
-    const errors = validateStyleMin(createMapStyle(theme));
-    assert.deepEqual(errors.map(error => error.message), []);
-  });
+  for (const showBuildings of [false, true]) {
+    test(`${theme} ${showBuildings ? '3D' : '2D'} style passes the installed MapLibre style validator`, () => {
+      const errors = validateStyleMin(createMapStyle(theme, showBuildings));
+      assert.deepEqual(errors.map(error => error.message), []);
+    });
+  }
 }

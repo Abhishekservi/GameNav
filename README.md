@@ -82,10 +82,10 @@ Physical device testing was completed on a connected **physical iPhone 14**:
 3. **Map Rendering & Vector Tiles**: OpenFreeMap vector tiles loaded cleanly over the network; roads, labels, and landcover displayed at high resolution.
 4. **3D Buildings Extrusion**: Height-based polygon extrusions rendered crisply around local Mumbai coordinates.
 5. **HUD & Theming**: Cyberpunk "Arcade City" and "Classic" theme toggles, cyan-accented HUD, speed display, and search mock displayed with proper safe-area margins.
-6. **Live GPS & Vehicle Marker**: Foreground location permissions granted; live GPS accuracy locked down to ±14 m; vehicle marker animated with real-time course heading and radar pulse ring.
+6. **Live GPS & Vehicle Marker**: Foreground location permissions granted; live GPS fixes received; position interpolated between updates with real course/compass heading. Arcade City now uses an original white direction arrow; Classic keeps the vehicle icon.
 7. **Attribution**: Persistent attribution links for OpenFreeMap, OpenMapTiles, and OpenStreetMap remain reachable along the bottom edge.
 8. **Automated Verification**:
-   - `npm test`: 6/6 unit tests passed (fix validation, speed conversion, compass shortest arc, MapLibre style validation).
+   - `npm test`: 8/8 tests passed (fix validation, speed conversion, compass shortest arc, MapLibre style validation).
    - `npx expo lint`: Clean (0 errors).
    - `npx tsc --noEmit`: Clean (0 type errors).
 
@@ -106,13 +106,13 @@ The configured bundle identifier is `com.abhishekchoudhary.gamenav`. The initial
 
 ## What works
 
-- Classic and Arcade City dark vector map styles, interactive pan/zoom/rotation, and animated camera transitions.
+- Classic and Arcade City vector map styles, interactive pan/zoom/rotation, and animated camera transitions. Arcade City uses a grayscale pause-map treatment: near-black land, gray building footprints, pale roads with dark outlines, and sparse labels.
 - Real foreground GPS location, measured speed in km/h, compass at rest, and direction of travel above 2 m/s.
 - Original vehicle marker interpolated between received fixes using MapLibre 11's `LayerAnnotation`. No simulated driving or road snapping.
 - Heading-up and north-up follow modes; dragging the map suspends follow; GPS recenters it. The Mumbai button returns to the city overview.
-- 3D extrusions above zoom 15 from `building.render_height` and `render_min_height`, respecting `hide_3d`. Footprints without supplied heights remain flat. Zoom in to see available buildings.
+- Default flat, north-up map. The 3D button enables tilted views and building extrusions above zoom 15 from `building.render_height` and `render_min_height`, respecting `hide_3d`. Footprints without supplied heights remain flat. Zoom in to see available buildings.
 - Permission recovery, service-disabled and weak-GPS states, stale-position indication, map loading timeout, native tile-error notices, and map/GPS retry controls.
-- Safe-area-aware HUD, Reduce Motion support, 44-point or larger touch targets, and a simplified interface while moving. Search and theme controls hide while moving; Focus Mode can also simplify the interface while stopped.
+- Safe-area-aware HUD, Reduce Motion support, 44-point or larger touch targets, and a simplified interface while moving. Search and theme controls hide while moving. The default full-map view hides the larger panels while stopped; SHOW HUD reveals search, themes, and speed, and FULL MAP hides them again. The speed panel returns automatically when moving.
 
 Destination search is a labeled mock. There is **no routing, ETA, traffic, speed-limit detection, turn guidance, background tracking, or offline map download**. GPS speed is informational. Keep eyes on the road and use a passenger for setup.
 
@@ -122,7 +122,7 @@ The default provider is [OpenFreeMap](https://openfreemap.org/quick_start/), a l
 
 To change providers, copy `.env.example` to `.env.local`, configure the endpoint, glyph URL, and required attribution, and restart Metro. The provider must expose **OpenMapTiles-compatible TileJSON**, including the `transportation`, `transportation_name`, `place`, `building`, `water`, `landcover`, and `landuse` layers. A provider with another schema needs corresponding edits in `src/maps/style.ts`. `EXPO_PUBLIC_*` values are included in the app bundle: use only client-safe public API keys. Set the same variables in the EAS development environment when building in the cloud.
 
-Both themes use our own style definitions and an original vehicle asset. Native attribution stays enabled and reads the source's attribution. The default provider's OpenFreeMap, OpenMapTiles, and OpenStreetMap links are also visible along the bottom edge. Keep attribution accessible when customizing the HUD or provider.
+Both themes use our own style definitions and original vehicle/direction assets. No game map textures, logos, icons, or fonts are copied. Native attribution stays enabled and reads the source's attribution. The default provider's OpenFreeMap, OpenMapTiles, and OpenStreetMap links are also visible along the bottom edge. Keep attribution accessible when customizing the HUD or provider.
 
 ## Checks
 
@@ -140,9 +140,9 @@ The Node tests use built-in TypeScript stripping (Node 22.18+ or 24+). They veri
 
 After installing a signed development build:
 
-1. Allow precise location outdoors. Check that the car appears at your real location, speed is measured, and heading turns smoothly across north.
+1. Allow precise location outdoors. Check that the position marker appears at your real location, speed is measured, and heading turns smoothly across north.
 2. Pan and zoom; confirm follow pauses. Tap GPS; confirm the camera recenters. Toggle north-up and heading-up.
-3. While stopped, switch themes and explore Mumbai. Zoom in above 15 for available height-based buildings. Confirm roads and labels remain readable.
+3. While stopped, tap SHOW HUD to switch themes and explore Mumbai. Use the 3D button for available height-based buildings above zoom 15, and 2D to restore the flat map. Confirm roads and labels remain readable.
 4. Deny location, disable Precise Location, and disable Location Services. Confirm the corresponding recovery message; restore access through Settings and return to the app.
 5. Disable internet and move to uncached map areas. Confirm the tile warning and retry work once online. GPS failure must not show an old speed as current.
 6. Background and resume the app; confirm foreground subscriptions resume. Enable Reduce Motion and large text; check HUD spacing and animation behavior.
@@ -152,8 +152,12 @@ After installing a signed development build:
 
 All phases of local development, native compilation, free Apple Account signing, physical iPhone installation, and on-device runtime validation are **complete and verified**:
 - **Local Xcode Build & Free Signing**: Built locally targeting iPhone 14 with personal team `WJ7K33HG5V`.
-- **Physical Device Execution**: Verified on physical hardware (iPhone 14, iOS 18).
+- **Physical Device Execution**: Verified on physical hardware (iPhone 14, iOS 27.0.1).
 - **Live Vector Map & HUD**: Verified via live screen capture showing 3D buildings, vehicle tracking, GPS fix reception (±14 m), and theme controls.
-- **Code Quality**: Lint (`expo lint`), TypeScript (`tsc --noEmit`), and 6/6 test suites pass with zero errors.
+- **Code Quality**: Lint (`expo lint`), TypeScript (`tsc --noEmit`), and 8/8 tests pass with zero errors.
 
 The dependency audit currently reports 9 entries (3 high, 6 low), including advisories inherited through Expo tooling. Its proposed automatic fix downgrades Expo to SDK 51, so that incompatible change was not applied. Review dependency advisories before production store release.
+
+## Pause-map styling revision
+
+Arcade City was restyled against user-provided GTA V pause-map screenshots while retaining real OpenFreeMap geometry. The revision was viewed on the physical iPhone with live GPS, grayscale roads/buildings, the white heading arrow, minimal controls, and visible attribution. This revision changes TypeScript, map style JSON, and one bundled PNG; the existing development client loads it through Metro without a native rebuild. The original installed 3D capability is available through the new 3D/2D control. Both themes validate in 2D and 3D; 8 tests, lint, and TypeScript pass. Routing remains unimplemented.
