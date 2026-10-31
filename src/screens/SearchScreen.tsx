@@ -1,7 +1,7 @@
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, FlatList, Keyboard, KeyboardAvoidingView, Linking, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { Notice, colors, hud } from '../components/HUD';
 import { useGPSState } from '../location/GPSProvider';
 import { useDestination } from '../search/DestinationProvider';
@@ -17,6 +17,11 @@ function closeSearch() {
 }
 
 export default function SearchScreen() {
+  // Native modal presentations need measurements from their own view root.
+  return <SafeAreaProvider><SearchContent /></SafeAreaProvider>;
+}
+
+function SearchContent() {
   const { destination, select } = useDestination();
   const gps = useGPSState();
   const moving = (gps.fix?.coords.speed ?? 0) > 2.2;

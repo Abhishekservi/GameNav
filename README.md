@@ -175,3 +175,11 @@ The client sends the submitted query and a fixed public Mumbai city-center bias.
 The search screen uses an Expo Router modal anchored to the map. These changes use existing native modules, so the installed development client loads them through Metro without a native rebuild.
 
 Verification: the physical iPhone displayed live Photon results; the user confirmed that selecting a result returned to the map with its purple pin and destination card. Lint, TypeScript, all 19 tests, and the iOS Hermes export passed. Additional device checks to exercise include changing/clearing a destination, cancelling search while a request is loading, offline search/retry, and choosing a city-level result.
+
+## Local iPhone build verification — 31 October 2026
+
+The native Debug build succeeded in Xcode 27.2 with automatic Personal Team signing. Its signature passed `codesign --verify --deep --strict`, and the app was installed and launched on the physical iPhone 14. The GTA V map rendered with GPS LIVE and visible map attribution through the existing Metro server.
+
+On-device verification exposed a search modal safe-area issue. A provider at the modal root now measures its own insets; the corrected header was visually checked below the iPhone notch and status bar. This spacing fix loads through Metro and requires no additional native rebuild. Lint, TypeScript, and the iOS Hermes export passed after the fix; all 19 existing tests passed during build validation.
+
+Local ignored build output: `.expo/ios-build/Build/Products/Debug-iphoneos/GameNav.app`. Build log: `.expo/ios-build.log`. The development app still needs a reachable Metro server; routing remains unimplemented.
