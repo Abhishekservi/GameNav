@@ -81,11 +81,11 @@ Physical device testing was completed on a connected **physical iPhone 14**:
 2. **App Installation & Launch**: Successfully installed via `devicectl` (`bundleID: com.abhishekchoudhary.gamenav`) and launched with Expo Dev Client.
 3. **Map Rendering & Vector Tiles**: OpenFreeMap vector tiles loaded cleanly over the network; roads, labels, and landcover displayed at high resolution.
 4. **3D Buildings Extrusion**: Height-based polygon extrusions rendered crisply around local Mumbai coordinates.
-5. **HUD & Theming**: Cyberpunk "Arcade City" and "Classic" theme toggles, cyan-accented HUD, speed display, and search mock displayed with proper safe-area margins.
-6. **Live GPS & Vehicle Marker**: Foreground location permissions granted; live GPS fixes received; position interpolated between updates with real course/compass heading. Arcade City now uses an original white direction arrow; Classic keeps the vehicle icon.
+5. **HUD & Theming**: Grayscale "GTA V" and dark "Classic" theme toggles, cyan-accented HUD, speed display, and destination search displayed with proper safe-area margins.
+6. **Live GPS & Vehicle Marker**: Foreground location permissions granted; live GPS fixes received; position interpolated between updates with real course/compass heading. GTA V now uses an original white direction arrow; Classic keeps the vehicle icon.
 7. **Attribution**: Persistent attribution links for OpenFreeMap, OpenMapTiles, and OpenStreetMap remain reachable along the bottom edge.
 8. **Automated Verification**:
-   - `npm test`: 8/8 tests passed (fix validation, speed conversion, compass shortest arc, MapLibre style validation).
+   - `npm test`: 19/19 tests passed (GPS validation, speed conversion, compass shortest arc, MapLibre styles, and place-search validation/recovery).
    - `npx expo lint`: Clean (0 errors).
    - `npx tsc --noEmit`: Clean (0 type errors).
 
@@ -106,15 +106,15 @@ The configured bundle identifier is `com.abhishekchoudhary.gamenav`. The initial
 
 ## What works
 
-- Classic and Arcade City vector map styles, interactive pan/zoom/rotation, and animated camera transitions. Arcade City uses a grayscale pause-map treatment: near-black land, gray building footprints, pale roads with dark outlines, and sparse labels.
+- Classic and GTA V vector map styles, interactive pan/zoom/rotation, and animated camera transitions. GTA V uses a grayscale pause-map treatment: near-black land, gray building footprints, pale roads with dark outlines, and sparse labels.
 - Real foreground GPS location, measured speed in km/h, compass at rest, and direction of travel above 2 m/s.
 - Original vehicle marker interpolated between received fixes using MapLibre 11's `LayerAnnotation`. No simulated driving or road snapping.
 - Heading-up and north-up follow modes; dragging the map suspends follow; GPS recenters it. The Mumbai button returns to the city overview.
 - Default flat, north-up map. The 3D button enables tilted views and building extrusions above zoom 15 from `building.render_height` and `render_min_height`, respecting `hide_3d`. Footprints without supplied heights remain flat. Zoom in to see available buildings.
 - Permission recovery, service-disabled and weak-GPS states, stale-position indication, map loading timeout, native tile-error notices, and map/GPS retry controls.
-- Safe-area-aware HUD, Reduce Motion support, 44-point or larger touch targets, and a simplified interface while moving. Search and theme controls hide while moving. The default full-map view hides the larger panels while stopped; SHOW HUD reveals search, themes, and speed, and FULL MAP hides them again. The speed panel returns automatically when moving.
+- Safe-area-aware HUD, Reduce Motion support, 44-point or larger touch targets, and a simplified interface while moving. Search and theme controls hide while moving. The default full-map view hides the larger panels while stopped; SEARCH opens real place search directly from the full-map view. SHOW HUD reveals themes and speed, and FULL MAP hides the larger panels again. The speed panel returns automatically when moving.
 
-Destination search is a labeled mock. There is **no routing, ETA, traffic, speed-limit detection, turn guidance, background tracking, or offline map download**. GPS speed is informational. Keep eyes on the road and use a passenger for setup.
+Destination search is live: submit a place/address query, select a real result, and inspect its purple pin and destination card. There is **no routing, ETA, traffic, speed-limit detection, turn guidance, background tracking, or offline map download**. GPS speed is informational. Keep eyes on the road and use a passenger for setup.
 
 ## Map provider and attribution
 
@@ -134,7 +134,7 @@ npx expo-doctor
 npx expo export --platform ios --output-dir dist/ios-check
 ```
 
-The Node tests use built-in TypeScript stripping (Node 22.18+ or 24+). They verify stale/invalid fix rejection, unknown speeds, compass wraparound, and both styles against the installed MapLibre style validator. The export check verifies the Hermes JavaScript bundle and assets; it does not compile or sign the native iOS app.
+The Node tests use built-in TypeScript stripping (Node 22.18+ or 24+). The 19 tests cover invalid/stale GPS fixes, unknown speeds, compass wraparound, both themes in 2D/3D, and the search client: coordinate validation, deduplication, query encoding, caching/expiry, cancellation, provider errors/cooldowns, timeouts, and serialized requests. The export check verifies the Hermes JavaScript bundle and assets; it does not compile or sign the native iOS app.
 
 ## Physical iPhone acceptance checks
 
@@ -154,10 +154,24 @@ All phases of local development, native compilation, free Apple Account signing,
 - **Local Xcode Build & Free Signing**: Built locally targeting iPhone 14 with personal team `WJ7K33HG5V`.
 - **Physical Device Execution**: Verified on physical hardware (iPhone 14, iOS 27.0.1).
 - **Live Vector Map & HUD**: Verified via live screen capture showing 3D buildings, vehicle tracking, GPS fix reception (±14 m), and theme controls.
-- **Code Quality**: Lint (`expo lint`), TypeScript (`tsc --noEmit`), and 8/8 tests pass with zero errors.
+- **Code Quality**: Lint (`expo lint`), TypeScript (`tsc --noEmit`), and 19/19 tests pass with zero errors.
 
 The dependency audit currently reports 9 entries (3 high, 6 low), including advisories inherited through Expo tooling. Its proposed automatic fix downgrades Expo to SDK 51, so that incompatible change was not applied. Review dependency advisories before production store release.
 
 ## Pause-map styling revision
 
-Arcade City was restyled against user-provided GTA V pause-map screenshots while retaining real OpenFreeMap geometry. The revision was viewed on the physical iPhone with live GPS, grayscale roads/buildings, the white heading arrow, minimal controls, and visible attribution. This revision changes TypeScript, map style JSON, and one bundled PNG; the existing development client loads it through Metro without a native rebuild. The original installed 3D capability is available through the new 3D/2D control. Both themes validate in 2D and 3D; 8 tests, lint, and TypeScript pass. Routing remains unimplemented.
+GTA V was restyled against user-provided GTA V pause-map screenshots while retaining real OpenFreeMap geometry. The revision was viewed on the physical iPhone with live GPS, grayscale roads/buildings, the white heading arrow, minimal controls, and visible attribution. This revision changes TypeScript, map style JSON, and one bundled PNG; the existing development client loads it through Metro without a native rebuild. The original installed 3D capability is available through the new 3D/2D control. Both themes validate in 2D and 3D; 19 tests, lint, and TypeScript pass. Routing remains unimplemented.
+
+## Real destination search
+
+Tap **SEARCH** on the full map, or **Find a destination** in the expanded HUD. Enter at least three characters and press Search. You can also tap a sample landmark. Search requests run only after an explicit submit, not on every keystroke.
+
+Select a result to return to the map. The camera moves to the result's coordinates and an original purple pin marks the destination. The destination card offers **VIEW PIN**, **CHANGE**, and **CLEAR**. Destination selection is retained for the current app session. City/country results use a wider camera zoom than individual landmarks. Selecting a destination does not calculate a route or start navigation.
+
+The default service is [Photon](https://photon.komoot.io/), using OpenStreetMap data. It requires no API key for modest development use. Its public host is subject to fair-use throttling and availability changes; configure a supported hosted or self-hosted Photon-compatible HTTPS endpoint before wider deployment. Set `EXPO_PUBLIC_SEARCH_URL` in `.env.local` and restart Metro to change the endpoint. Credentials marked `EXPO_PUBLIC_*` are visible in the app bundle; do not put private server keys there.
+
+The client sends the submitted query and a fixed public Mumbai city-center bias. It does not attach device GPS coordinates. Queries/results are cached only in memory (40 queries, 10-minute TTL); requests are serialized with at least 1.5 seconds between starts, a 10-second network timeout, and explicit cooldown handling for HTTP 429. Editing/clearing the query or closing search cancels pending work, and stale responses cannot replace the latest query's results. Empty/offline/error responses produce recovery states without fabricated results. Search and selection pause while the last measured speed indicates motion. GPS is shared between the map and search rather than starting duplicate location subscriptions.
+
+The search screen uses an Expo Router modal anchored to the map. These changes use existing native modules, so the installed development client loads them through Metro without a native rebuild.
+
+Verification: the physical iPhone displayed live Photon results; the user confirmed that selecting a result returned to the map with its purple pin and destination card. Lint, TypeScript, all 19 tests, and the iOS Hermes export passed. Additional device checks to exercise include changing/clearing a destination, cancelling search while a request is loading, offline search/retry, and choosing a city-level result.

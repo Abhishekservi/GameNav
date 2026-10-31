@@ -11,8 +11,8 @@ export function Control({ label, glyph, active = false, onPress }: { label: stri
 }
 
 export function ThemeSwitcher({ theme, onChange, disabled }: { theme: MapTheme; onChange: (theme: MapTheme) => void; disabled: boolean }) {
-  return <View accessibilityRole="tablist" style={s.switcher}>{(['classic', 'arcade'] as const).map(value => <Pressable key={value} accessibilityRole="tab" accessibilityLabel={value === 'arcade' ? 'Arcade City theme' : 'Classic theme'} accessibilityState={{ selected: value === theme, disabled }} disabled={disabled} onPress={() => onChange(value)} style={({ pressed }) => [s.theme, value === theme && s.selected, pressed && s.pressed]}>
-    <Text style={[s.themeText, value === theme && s.selectedText]}>{value === 'classic' ? 'CLASSIC' : 'ARCADE CITY'}</Text>
+  return <View accessibilityRole="tablist" style={s.switcher}>{(['classic', 'arcade'] as const).map(value => <Pressable key={value} accessibilityRole="tab" accessibilityLabel={value === 'arcade' ? 'GTA V theme' : 'Classic theme'} accessibilityState={{ selected: value === theme, disabled }} disabled={disabled} onPress={() => onChange(value)} style={({ pressed }) => [s.theme, value === theme && s.selected, pressed && s.pressed]}>
+    <Text style={[s.themeText, value === theme && s.selectedText]}>{value === 'classic' ? 'CLASSIC' : 'GTA V'}</Text>
   </Pressable>)}</View>;
 }
 

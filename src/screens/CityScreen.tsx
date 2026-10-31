@@ -1,21 +1,26 @@
 import { Camera, Images, Layer, LayerAnnotation, LogManager, Map, type CameraRef, type MapRef } from '@maplibre/maplibre-react-native';
+import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Linking, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Control, Notice, SpeedDisplay, ThemeSwitcher, colors, hud } from '../components/HUD';
-import { useGPS } from '../hooks/useGPS';
+import { DestinationCard } from '../components/DestinationCard';
 import { useReducedMotion } from '../hooks/useReducedMotion';
+import { useGPSState } from '../location/GPSProvider';
 import { speedKmh } from '../location/position';
 import { IS_DEFAULT_PROVIDER, MUMBAI, createMapStyle, type MapTheme } from '../maps/style';
+import { useDestination } from '../search/DestinationProvider';
 
-const vehicleImages = { vehicle: require('../../assets/vehicle.png'), direction: require('../../assets/direction-arrow.png') };
+const vehicleImages = { vehicle: require('../../assets/vehicle.png'), direction: require('../../assets/direction-arrow.png'), destination: require('../../assets/destination-pin.png') };
 const initialViewState = { center: MUMBAI, zoom: 14.8, pitch: 0, bearing: 0 };
 
 export default function CityScreen() {
   const insets = useSafeAreaInsets();
   const { height, fontScale } = useWindowDimensions();
   const smallScreen = height < 740 || fontScale > 1.3;
-  const gps = useGPS();
+  const gps = useGPSState();
+  const { destination, revision: destinationRevision, clear: clearDestination } = useDestination();
+  const viewedDestinationRevision = useRef(0);
   const reducedMotion = useReducedMotion();
   const camera = useRef<CameraRef>(null);
   const map = useRef<MapRef>(null);
@@ -92,6 +97,24 @@ export default function CityScreen() {
       if (view) camera.current?.easeTo({ center: view.center, zoom: showBuildings ? view.zoom : Math.max(15.5, view.zoom), bearing: view.bearing, pitch: showBuildings ? 0 : 48, duration: reducedMotion ? 0 : 700 });
     } catch { setShowBuildings(value => !value); }
   };
+  const openSearch = () => { if (!moving) router.navigate('/search'); };
+  const viewDestination = useCallback(() => {
+    if (!destination || mapState !== 'ready') return;
+    setFollowing(false);
+    setCompact(true);
+    firstFollow.current = true;
+    camera.current?.flyTo({
+      center: destination.coordinates, zoom: destination.zoom, bearing: 0, pitch,
+      duration: reducedMotion ? 0 : 1000,
+      padding: { top: insets.top + 72, bottom: insets.bottom + 320, left: 36, right: 36 },
+    });
+  }, [destination, mapState, pitch, reducedMotion, insets.top, insets.bottom]);
+
+  useFocusEffect(useCallback(() => {
+    if (!destination || mapState !== 'ready' || viewedDestinationRevision.current === destinationRevision) return;
+    viewedDestinationRevision.current = destinationRevision;
+    viewDestination();
+  }, [destination, destinationRevision, mapState, viewDestination]));
   const gpsMessage = gps.state === 'denied' ? 'Location access is off' : gps.state === 'disabled' ? 'Location services are off' : gps.state === 'error' ? 'GPS connection interrupted' : gps.state === 'weak' ? 'Precise location needed' : gps.state === 'requesting' ? 'Requesting location access' : gps.state === 'paused' ? 'GPS paused' : 'Waiting for a GPS signal';
   const gpsNotice = !gps.fresh && <Notice title={gpsMessage} detail={smallScreen || driving ? undefined : gps.state === 'denied' ? 'Allow location in Settings to show your position.' : gps.state === 'weak' ? 'Enable Precise Location or move to an open area.' : 'Your live position and speed appear when GPS is available.'} action={gps.state === 'denied' || gps.state === 'disabled' || gps.state === 'weak' ? 'Location settings' : 'Retry GPS'} onPress={gps.state === 'denied' || gps.state === 'disabled' || gps.state === 'weak' ? openSettings : gps.retry} />;
 
@@ -107,13 +130,19 @@ export default function CityScreen() {
         <Layer id="vehicle-halo" type="circle" paint={{ 'circle-radius': theme === 'arcade' ? 19 : 26, 'circle-color': '#111610', 'circle-opacity': gps.fresh ? 0.22 : 0.08 }} />
         <Layer id="vehicle" type="symbol" layout={{ 'icon-image': theme === 'arcade' ? 'direction' : 'vehicle', 'icon-size': theme === 'arcade' ? 0.46 : 0.55, 'icon-allow-overlap': true, 'icon-ignore-placement': true, 'icon-rotation-alignment': 'map', 'icon-pitch-alignment': 'viewport', 'icon-rotate': gps.heading }} paint={{ 'icon-opacity': gps.fresh ? 1 : 0.35 }} />
       </LayerAnnotation>}
+      {destination && <LayerAnnotation id="destination-position" lngLat={destination.coordinates}>
+        <Layer id="destination-target" type="circle" paint={{ 'circle-color': '#9b4dff', 'circle-radius': 5, 'circle-stroke-color': '#f1f1f1', 'circle-stroke-width': 1 }} />
+        <Layer id="destination-pin" type="symbol" layout={{ 'icon-image': 'destination', 'icon-size': 0.5, 'icon-anchor': 'bottom', 'icon-allow-overlap': true, 'icon-ignore-placement': true, 'icon-pitch-alignment': 'viewport', 'icon-rotation-alignment': 'viewport' }} />
+        <Layer id="destination-label" type="symbol" layout={{ 'text-field': ['literal', destination.name], 'text-font': ['Noto Sans Regular'], 'text-size': 12, 'text-anchor': 'top', 'text-offset': [0, 0.6], 'text-max-width': 14 }} paint={{ 'text-color': '#f1f1f1', 'text-halo-color': '#131313', 'text-halo-width': 2 }} />
+      </LayerAnnotation>}
     </Map>
 
     <View pointerEvents="box-none" style={[s.top, { top: insets.top + 14, left: Math.max(insets.left, 18), right: Math.max(insets.right, 18) }]}>
       {!cleanMap && (!smallScreen || gps.fresh || driving) && <View style={s.brandRow} pointerEvents="none"><Text maxFontSizeMultiplier={1.3} style={hud.title}>GAMENAV</Text><View style={s.livePill}><View style={[s.dot, !gps.fresh && { backgroundColor: colors.amber }]} /><Text style={s.liveText}>{gps.fresh ? 'GPS LIVE' : 'CITY MAP'}</Text></View></View>}
+      {cleanMap && <Pressable accessibilityRole="button" accessibilityLabel="Search for a destination" onPress={openSearch} style={({ pressed }) => [s.quickSearch, pressed && { opacity: 0.65 }]}><Text style={s.quickSearchGlyph}>⌕</Text><Text style={s.quickSearchText}>SEARCH</Text></Pressable>}
       {!driving && <>
-        <Pressable accessibilityRole="button" accessibilityLabel="Destination search preview. Routing is not available." onPress={() => Alert.alert('Destination search preview', 'Search and turn-by-turn routes are not connected yet. You can explore the map and follow your real GPS position.')} style={({ pressed }) => [s.search, pressed && { opacity: 0.75 }]}>
-          <View style={s.searchIcon}><View style={s.searchLens} /><View style={s.searchHandle} /></View><Text style={s.searchTitle}>Find a destination</Text><Text style={s.preview}>PREVIEW</Text>
+        <Pressable accessibilityRole="button" accessibilityLabel={destination ? 'Change selected destination' : 'Search for a destination'} onPress={openSearch} style={({ pressed }) => [s.search, pressed && { opacity: 0.75 }]}>
+          <View style={s.searchIcon}><View style={s.searchLens} /><View style={s.searchHandle} /></View><Text numberOfLines={1} style={s.searchTitle}>{destination ? destination.name : 'Find a destination'}</Text><Text style={s.preview}>SEARCH</Text>
         </Pressable>
         <ThemeSwitcher theme={theme} onChange={value => { void changeTheme(value); }} disabled={mapState === 'loading'} />
       </>}
@@ -122,6 +151,7 @@ export default function CityScreen() {
     </View>
 
     <View pointerEvents="box-none" style={[s.bottom, { bottom: insets.bottom + 48, left: Math.max(insets.left, 18), right: Math.max(insets.right, 18) }]}>
+      {destination && <DestinationCard place={destination} moving={moving} onView={viewDestination} onChange={openSearch} onClear={clearDestination} />}
       <View style={s.mapControls} pointerEvents="box-none">
         {!moving && <Pressable accessibilityRole="button" accessibilityLabel="Explore Mumbai city center" onPress={overview} style={s.cityChip}><Text style={s.cityText}>MUMBAI</Text><Text style={s.citySub}>CITY MAP ↗</Text></Pressable>}
         <View style={s.controlStack}>
@@ -130,12 +160,12 @@ export default function CityScreen() {
           <Control glyph="◎" label={gps.fresh ? 'Recenter on my location' : 'Enable or retry GPS'} active={following && gps.fresh} onPress={locate} />
         </View>
       </View>
-      {!cleanMap && <SpeedDisplay speed={speed}>
+      {!cleanMap && (!destination || moving) && <SpeedDisplay speed={speed}>
         <Text style={hud.eyebrow}>{following && gps.fresh ? headingUp ? 'HEADING UP' : 'NORTH UP' : 'FREE EXPLORE'}</Text>
         <Text style={hud.strong}>{gps.fresh ? 'GPS TRACKING' : 'CITY OVERVIEW'}</Text>
         <Text style={hud.muted}>{gps.fresh ? `GPS ±${Math.round(gps.fix?.coords.accuracy ?? 0)} m · No active route` : 'Mumbai overview · No active route'}</Text>
       </SpeedDisplay>}
-      <View style={s.footerRow}><Text style={s.footerText}>{moving ? 'Keep your eyes on the road' : `${showBuildings ? '3D VIEW' : '2D MAP'} · ${gps.fresh ? 'GPS LIVE' : 'GPS UNAVAILABLE'}`}</Text><Pressable accessibilityRole="button" accessibilityLabel={compact ? 'Show destination preview, themes, and speed panel' : 'Expand map and hide panels'} disabled={moving} onPress={() => setCompact(value => !value)} style={s.focusButton}><Text style={s.focusText}>{moving ? 'FOCUS ON' : compact ? 'SHOW HUD' : 'FULL MAP'}</Text></Pressable></View>
+      <View style={s.footerRow}><Text style={s.footerText}>{moving ? 'Keep your eyes on the road' : `${showBuildings ? '3D VIEW' : '2D MAP'} · ${gps.fresh ? 'GPS LIVE' : 'GPS UNAVAILABLE'}`}</Text><Pressable accessibilityRole="button" accessibilityLabel={compact ? 'Show destination search, themes, and speed panel' : 'Expand map and hide panels'} disabled={moving} onPress={() => setCompact(value => !value)} style={s.focusButton}><Text style={s.focusText}>{moving ? 'FOCUS ON' : compact ? 'SHOW HUD' : 'FULL MAP'}</Text></Pressable></View>
     </View>
     <View style={[s.credits, { bottom: insets.bottom + 2 }]}>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.creditsContent}>
@@ -153,6 +183,9 @@ const s = StyleSheet.create({
   dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.gps },
   liveText: { color: colors.text, fontSize: 9, letterSpacing: 1.2, fontWeight: '800' },
   search: { flexDirection: 'row', alignItems: 'center', gap: 13, backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border, borderRadius: 2, minHeight: 52, padding: 12 },
+  quickSearch: { alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 44, paddingHorizontal: 12, backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.border },
+  quickSearchGlyph: { color: colors.accent, fontSize: 25 },
+  quickSearchText: { color: colors.text, fontSize: 11, fontWeight: '800', letterSpacing: 1.5 },
   searchTitle: { color: colors.text, fontWeight: '600', fontSize: 14, flex: 1 },
   preview: { color: colors.muted, fontSize: 9, fontWeight: '700', letterSpacing: 1 },
   searchIcon: { width: 24, height: 28 }, searchLens: { position: 'absolute', left: 1, top: 2, width: 17, height: 17, borderWidth: 2, borderRadius: 9, borderColor: colors.accent }, searchHandle: { position: 'absolute', left: 17, top: 17, width: 2, height: 9, backgroundColor: colors.accent, transform: [{ rotate: '-45deg' }] },
