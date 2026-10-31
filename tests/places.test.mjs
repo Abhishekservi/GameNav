@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { createPlaceSearchClient, normalizeQuery, parsePlaces } from '../src/search/places.ts';
+import { createPlaceSearchClient, createSuggestionScheduler, normalizeQuery, parsePlaces } from '../src/search/places.ts';
 
 function feature(properties = {}, coordinates = [72.8345657, 18.9219661]) {
   return { type: 'Feature', geometry: { type: 'Point', coordinates }, properties: { name: 'Gateway of India', street: 'Apollo Bandar', locality: 'Apollo Bandar', city: 'Mumbai', state: 'Maharashtra', country: 'India', osm_type: 'W', osm_id: 28845634, osm_value: 'monument', type: 'house', ...properties } };
@@ -49,10 +49,12 @@ test('encodes user input as a query value, preserves configured parameters, and 
   await client.search('gateway of india & limit=999');
   assert.equal(requests.length, 1);
   assert.equal(requests[0].url.searchParams.get('q'), 'Gateway of India & limit=999');
-  assert.equal(requests[0].url.searchParams.get('limit'), '8');
+  assert.equal(requests[0].url.searchParams.get('limit'), '12');
   assert.equal(requests[0].url.searchParams.get('key'), 'public-key');
   assert.equal(requests[0].url.searchParams.get('lat'), '18.94');
   assert.equal(requests[0].url.searchParams.get('lon'), '72.83');
+  assert.equal(requests[0].url.searchParams.get('zoom'), '10');
+  assert.equal(requests[0].url.searchParams.get('location_bias_scale'), '0.2');
   assert.match(requests[0].options.headers['User-Agent'], /^GameNav\//);
 });
 
@@ -137,4 +139,53 @@ test('serializes simultaneous requests and maintains the minimum spacing', async
   await Promise.all([client.search('Mumbai'), client.search('Delhi')]);
   assert.equal(maximumActive, 1);
   assert.ok(started[1] - started[0] >= 29);
+});
+
+
+test('typing a burst sends only the latest normalized suggestion query', async () => {
+  const calls = [];
+  const scheduler = createSuggestionScheduler(query => calls.push(query), 15);
+  scheduler.schedule('gat');
+  scheduler.schedule('gate');
+  scheduler.schedule('  Gateway   of India  ');
+  assert.deepEqual(calls, []);
+  await new Promise(resolve => setTimeout(resolve, 30));
+  assert.deepEqual(calls, ['Gateway of India']);
+});
+
+test('clearing, short input, excessive input, and closing cancel scheduled suggestions', async () => {
+  const calls = [];
+  const scheduler = createSuggestionScheduler(query => calls.push(query), 15);
+  scheduler.schedule('Mumbai');
+  scheduler.schedule('');
+  scheduler.schedule('ab');
+  scheduler.schedule('x'.repeat(121));
+  await new Promise(resolve => setTimeout(resolve, 25));
+  assert.deepEqual(calls, []);
+  scheduler.schedule('Bandra');
+  scheduler.cancel();
+  await new Promise(resolve => setTimeout(resolve, 25));
+  assert.deepEqual(calls, []);
+});
+
+test('keyboard submit searches immediately without a second delayed request', async () => {
+  const calls = [];
+  const scheduler = createSuggestionScheduler(query => calls.push(query), 15);
+  scheduler.schedule('Gateway');
+  scheduler.submit('Gateway of India');
+  assert.deepEqual(calls, ['Gateway of India']);
+  await new Promise(resolve => setTimeout(resolve, 30));
+  assert.deepEqual(calls, ['Gateway of India']);
+  scheduler.submit('a');
+  assert.equal(calls.length, 1);
+});
+
+test('groups nearby station platforms without hiding distant branches with the same address label', () => {
+  const places = parsePlaces(collection(
+    feature({ name: 'Bandra', osm_id: 10 }, [72.84, 19.05]),
+    feature({ name: 'Bandra', osm_id: 11 }, [72.841, 19.05]),
+    feature({ name: 'Bandra', osm_id: 12 }, [72.85, 19.05]),
+    feature({ name: 'Bandra West', osm_id: 13 }, [72.84, 19.05]),
+  ));
+  assert.deepEqual(places.map(place => place.id), ['W10', 'W12', 'W13']);
 });

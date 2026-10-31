@@ -15,6 +15,8 @@ import { useDestination } from '../search/DestinationProvider';
 
 const vehicleImages = { vehicle: require('../../assets/vehicle.png'), direction: require('../../assets/direction-arrow.png'), destination: require('../../assets/destination-pin.png') };
 const initialViewState = { center: MUMBAI, zoom: 14.8, pitch: 0, bearing: 0 };
+const showMapCredits = process.env.EXPO_PUBLIC_PERSONAL_BUILD !== '1';
+const creditInset = showMapCredits ? 44 : 8;
 
 export default function CityScreen() {
   const insets = useSafeAreaInsets();
@@ -61,7 +63,7 @@ export default function CityScreen() {
   const viewRoute = useCallback(() => {
     if (!route || mapState !== 'ready') return;
     setFollowing(false); setOverviewMode(true); firstFollow.current = true;
-    camera.current?.fitBounds(route.bounds, { bearing: 0, pitch: 0, duration: reducedMotion ? 0 : 1000, padding: { top: insets.top + 75, bottom: Math.min(height * 0.65, insets.bottom + panelHeight + 68), left: 32, right: 82 } });
+    camera.current?.fitBounds(route.bounds, { bearing: 0, pitch: 0, duration: reducedMotion ? 0 : 1000, padding: { top: insets.top + 75, bottom: Math.min(height * 0.65, insets.bottom + panelHeight + creditInset + 24), left: 32, right: 82 } });
     setShowBuildings(false);
   }, [route, mapState, reducedMotion, insets.top, insets.bottom, height, panelHeight]);
   useEffect(() => {
@@ -132,7 +134,7 @@ export default function CityScreen() {
     camera.current?.flyTo({
       center: destination.coordinates, zoom: destination.zoom, bearing: 0, pitch,
       duration: reducedMotion ? 0 : 1000,
-      padding: { top: insets.top + 72, bottom: insets.bottom + panelHeight + 68, left: 36, right: 36 },
+      padding: { top: insets.top + 72, bottom: insets.bottom + panelHeight + creditInset + 24, left: 36, right: 36 },
     });
   }, [destination, mapState, pitch, reducedMotion, insets.top, insets.bottom, panelHeight]);
 
@@ -145,7 +147,7 @@ export default function CityScreen() {
   const gpsNotice = !gps.fresh && <Notice title={gpsMessage} detail={smallScreen || moving ? undefined : gps.state === 'denied' ? 'Allow location in Settings to show your position.' : gps.state === 'weak' ? 'Enable Precise Location or move to an open area.' : 'Your live position and speed appear when GPS is available.'} action={gps.state === 'denied' || gps.state === 'disabled' || gps.state === 'weak' ? 'Location settings' : 'Retry GPS'} onPress={gps.state === 'denied' || gps.state === 'disabled' || gps.state === 'weak' ? openSettings : gps.retry} />;
 
   return <View style={s.screen}>
-    <Map key={attempt} ref={map} style={StyleSheet.absoluteFill} mapStyle={mapStyle} tintColor={colors.accent} attribution attributionPosition={{ bottom: insets.bottom + 12, right: 14 }} logo={false} compass={false} touchPitch={showBuildings}
+    <Map key={attempt} ref={map} style={StyleSheet.absoluteFill} mapStyle={mapStyle} tintColor={colors.accent} attribution={showMapCredits} attributionPosition={{ bottom: insets.bottom + 12, right: 14 }} logo={false} compass={false} touchPitch={showBuildings}
       onDidFinishLoadingStyle={() => { setMapState('ready'); }}
       onDidFailLoadingMap={() => setMapState('error')}
       onDidFinishRenderingMapFully={() => setTileError(false)}
@@ -177,26 +179,27 @@ export default function CityScreen() {
       {mapState === 'ready' && !tileError && gpsNotice}
     </View>
 
-    <View pointerEvents="box-none" style={[s.floating, { right: Math.max(insets.right, 16), bottom: insets.bottom + panelHeight + 58 }]}>
+    <View pointerEvents="box-none" style={[s.floating, { right: Math.max(insets.right, 16), bottom: insets.bottom + panelHeight + creditInset + 14 }]}>
       {!moving && <Control glyph="▱" label={optionsOpen ? 'Close map options' : 'Map options: theme, buildings, and orientation'} active={optionsOpen} onPress={() => { setOverviewMode(false); setOptionsOpen(value => !value); }} />}
       <Control glyph="◎" label={gps.fresh ? 'Recenter on my location' : 'Enable or retry GPS'} active={following && gps.fresh} onPress={locate} />
     </View>
-    {moving && <View style={[s.speedBadge, { bottom: insets.bottom + panelHeight + 58, left: Math.max(insets.left, 16) }]}><Text style={s.speed}>{speed === null ? '—' : speed}</Text><Text style={s.speedUnit}>km/h</Text></View>}
-    <View pointerEvents="box-none" onLayout={event => { const next = Math.ceil(event.nativeEvent.layout.height); setPanelHeight(current => Math.abs(current - next) > 1 ? next : current); }} style={[s.bottom, { bottom: insets.bottom + 44, left: Math.max(insets.left, 12), right: Math.max(insets.right, 12) }]}>
+    {moving && <View style={[s.speedBadge, { bottom: insets.bottom + panelHeight + creditInset + 14, left: Math.max(insets.left, 16) }]}><Text style={s.speed}>{speed === null ? '—' : speed}</Text><Text style={s.speedUnit}>km/h</Text></View>}
+    <View pointerEvents="box-none" onLayout={event => { const next = Math.ceil(event.nativeEvent.layout.height); setPanelHeight(current => Math.abs(current - next) > 1 ? next : current); }} style={[s.bottom, { bottom: insets.bottom + creditInset, left: Math.max(insets.left, 12), right: Math.max(insets.right, 12) }]}>
       {optionsOpen && !moving ? <View style={s.options}>
         <View style={s.optionsHeader}><Text style={s.optionsTitle}>Map options</Text><Pressable accessibilityRole="button" accessibilityLabel="Close map options" onPress={() => setOptionsOpen(false)} style={s.close}><Text style={s.closeText}>×</Text></Pressable></View>
         <ThemeSwitcher theme={theme} onChange={value => { void changeTheme(value); }} disabled={mapState === 'loading'} />
         <Pressable accessibilityRole="button" onPress={() => { void toggleBuildings(); }} style={s.optionRow}><Text style={s.optionLabel}>Buildings</Text><Text style={s.optionValue}>{showBuildings ? '3D' : 'Flat'} ›</Text></Pressable>
         <Pressable accessibilityRole="button" onPress={() => { setHeadingUp(value => !value); if (gps.fresh) setFollowing(true); }} style={s.optionRow}><Text style={s.optionLabel}>Orientation</Text><Text style={s.optionValue}>{headingUp ? 'Heading up' : 'North up'} ›</Text></Pressable>
         <Pressable accessibilityRole="button" onPress={overview} style={s.optionRow}><Text style={s.optionLabel}>Explore Mumbai</Text><Text style={s.optionValue}>↗</Text></Pressable>
+        <Pressable accessibilityRole="button" onPress={() => { void map.current?.showAttribution().catch(() => Alert.alert('Map data', 'OpenFreeMap, OpenMapTiles and OpenStreetMap. Licence details are in the project documentation.')); }} style={s.optionRow}><Text style={s.optionLabel}>About map data</Text><Text style={s.optionValue}>ⓘ</Text></Pressable>
       </View> : destination ? <DestinationCard key={destinationRevision} place={destination} moving={moving} onView={route ? viewRoute : viewDestination} onChange={openSearch} onClear={clearDestination} routing={routing} canRoute={canRoute} startChanged={startChanged} onRoute={getRoute} onCancel={clearRoute} /> : null}
     </View>
-    <View style={[s.credits, { bottom: insets.bottom + 2 }]}>
+    {showMapCredits && <View style={[s.credits, { bottom: insets.bottom + 2 }]}>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.creditsContent}>
         {IS_DEFAULT_PROVIDER ? [['OpenFreeMap', 'https://openfreemap.org'], ['© OpenMapTiles', 'https://openmaptiles.org'], ['© OpenStreetMap', 'https://www.openstreetmap.org/copyright']].map(([label, url]) => <Pressable key={label} accessibilityRole="link" onPress={() => { void Linking.openURL(url).catch(() => Alert.alert('Link unavailable', 'Please try again when you have a connection.')); }} style={s.creditLink}><Text style={s.creditText}>{label}</Text></Pressable>) : <Pressable accessibilityRole="button" onPress={() => { void map.current?.showAttribution().catch(() => Alert.alert('Attribution', 'Use the map’s information button to view provider credits.')); }} style={s.creditLink}><Text style={s.creditText}>Map attribution</Text></Pressable>}
         {route && <Pressable accessibilityRole="link" accessibilityLabel={`Routes by ${ROUTING_CREDIT}`} onPress={() => { void Linking.openURL(ROUTING_CREDIT_URL).catch(() => Alert.alert('Link unavailable', 'Please try again when you have a connection.')); }} style={s.creditLink}><Text style={s.creditText}>{ROUTING_CREDIT}</Text></Pressable>}
       </ScrollView>
-    </View>
+    </View>}
   </View>;
 }
 

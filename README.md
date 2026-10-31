@@ -85,7 +85,7 @@ Physical device testing was completed on a connected **physical iPhone 14**:
 6. **Live GPS & Vehicle Marker**: Foreground location permissions granted; live GPS fixes received; position interpolated between updates with real course/compass heading. GTA V now uses an original white direction arrow; Classic keeps the vehicle icon.
 7. **Attribution**: Persistent attribution links for OpenFreeMap, OpenMapTiles, and OpenStreetMap remain reachable along the bottom edge.
 8. **Automated Verification**:
-   - `npm test`: 31/31 tests passed (GPS validation, speed conversion, compass shortest arc, MapLibre styles, and place-search validation/recovery).
+   - `npm test`: 35/35 tests passed (GPS validation, speed conversion, compass shortest arc, MapLibre styles, and place-search validation/recovery).
    - `npx expo lint`: Clean (0 errors).
    - `npx tsc --noEmit`: Clean (0 type errors).
 
@@ -122,7 +122,7 @@ The default provider is [OpenFreeMap](https://openfreemap.org/quick_start/), a l
 
 To change providers, copy `.env.example` to `.env.local`, configure the endpoint, glyph URL, and required attribution, and restart Metro. The provider must expose **OpenMapTiles-compatible TileJSON**, including the `transportation`, `transportation_name`, `place`, `building`, `water`, `landcover`, and `landuse` layers. A provider with another schema needs corresponding edits in `src/maps/style.ts`. `EXPO_PUBLIC_*` values are included in the app bundle: use only client-safe public API keys. Set the same variables in the EAS development environment when building in the cloud.
 
-Both themes use our own style definitions and original vehicle/direction assets. No game map textures, logos, icons, or fonts are copied. Native attribution stays enabled and reads the source's attribution. The default provider's OpenFreeMap, OpenMapTiles, and OpenStreetMap links are also visible along the bottom edge. Keep attribution accessible when customizing the HUD or provider.
+Both themes use our own style definitions and original vehicle/direction assets. No game map textures, logos, icons, or fonts are copied. Shared builds show native attribution and the default provider's links along the bottom edge. The personal-device presentation described below hides those labels while retaining source attribution metadata and About map data. Keep attribution accessible when customizing the HUD or provider.
 
 ## Checks
 
@@ -134,7 +134,7 @@ npx expo-doctor
 npx expo export --platform ios --output-dir dist/ios-check
 ```
 
-The Node tests use built-in TypeScript stripping (Node 22.18+ or 24+). The 31 tests cover invalid/stale GPS fixes, unknown speeds, compass wraparound, both themes in 2D/3D, the routing client (described below), and the search client: coordinate validation, deduplication, query encoding, caching/expiry, cancellation, provider errors/cooldowns, timeouts, and serialized requests. The export check verifies the Hermes JavaScript bundle and assets; it does not compile or sign the native iOS app.
+The Node tests use built-in TypeScript stripping (Node 22.18+ or 24+). The 35 tests cover invalid/stale GPS fixes, unknown speeds, compass wraparound, both themes in 2D/3D, the routing client (described below), and the search client: coordinate validation, deduplication, query encoding, caching/expiry, cancellation, provider errors/cooldowns, timeouts, and serialized requests. The export check verifies the Hermes JavaScript bundle and assets; it does not compile or sign the native iOS app.
 
 ## Physical iPhone acceptance checks
 
@@ -154,7 +154,7 @@ All phases of local development, native compilation, free Apple Account signing,
 - **Local Xcode Build & Free Signing**: Built locally targeting iPhone 14 with personal team `WJ7K33HG5V`.
 - **Physical Device Execution**: Verified on physical hardware (iPhone 14, iOS 27.0.1).
 - **Live Vector Map & HUD**: Verified via live screen capture showing 3D buildings, vehicle tracking, GPS fix reception (±14 m), and theme controls.
-- **Code Quality**: Lint (`expo lint`), TypeScript (`tsc --noEmit`), and 31/31 tests pass with zero errors.
+- **Code Quality**: Lint (`expo lint`), TypeScript (`tsc --noEmit`), and 35/35 tests pass with zero errors.
 
 The dependency audit currently reports 9 entries (3 high, 6 low), including advisories inherited through Expo tooling. Its proposed automatic fix downgrades Expo to SDK 51, so that incompatible change was not applied. Review dependency advisories before production store release.
 
@@ -164,7 +164,7 @@ GTA V was restyled against user-provided GTA V pause-map screenshots while retai
 
 ## Real destination search
 
-Tap the **Search places or addresses** bar. Enter at least three characters and press Search. You can also tap a sample landmark. Search requests run only after an explicit submit, not on every keystroke.
+Tap the **Search places or addresses** bar. Type at least three characters. Real suggestions appear after a 600 ms pause in typing; the keyboard Search action submits immediately. Outdated requests and pending timers are cancelled when the query changes, clears, closes, or pauses for movement.
 
 Select a result to return to the map. The camera moves to the result's coordinates and an original purple pin marks the destination. The destination card offers **Get route**, **Change**, **Details**, and a close button (×) to clear it. Details includes Show destination pin before routing. Destination selection is retained for the current app session. City/country results use a wider camera zoom than individual landmarks. Selecting a destination does not automatically calculate a route or start navigation. Use Get route on the map while stopped to request a preview.
 
@@ -234,3 +234,18 @@ The initial game HUD was replaced with a familiar Maps-style layout while preser
 Map options replaces the destination card temporarily rather than stacking more panels on top. It contains Classic/GTA V themes, Flat/3D buildings, North up/Heading up, and Explore Mumbai. While moving, setup controls hide and measured speed uses a small badge. Actual rendered bottom-panel height feeds camera padding; route overview adjusts when details expand, while manual panning suspends this behavior. No Google or Apple assets are used and no turn-guidance Start action is presented.
 
 The simplified Release app was rebuilt, passed strict/deep signature verification, and was installed on the physical iPhone with Metro still stopped. The new search bar, circular controls, original position arrow, and map attribution were visually checked. Lint, TypeScript and all 31 tests passed. The routing flow had already been verified in the preceding standalone build; the compact route card and expanded Details panel are additional manual device checks to exercise in this revision.
+
+
+## Minimal typeahead search and personal-device presentation
+
+Search now shows one input row with Cancel and a compact results list, with no title, instruction paragraphs, sample landmarks, result counts, standalone Search button, routing explanations, or search-provider footer. Names and address summaries each use one line. Three or more characters trigger suggestions after 600 ms without pressing Search; explicit submit cancels the scheduled request to prevent a duplicate. In-flight and queued stale work is cancelled. The client retains memory caching, 1.5-second request spacing, timeout and HTTP 429 recovery. Photon explicitly supports typeahead; its public service remains appropriate only for modest use.
+
+The fixed public Mumbai bias uses zoom 10 and location_bias_scale 0.2, without uploading phone GPS. The client asks for 12 candidates and shows at most eight, grouping nearby identically named/addressed station platforms within 250 meters while retaining distant places with the same labels. No completion text or places are fabricated. Search quality remains limited by the provider's OpenStreetMap coverage.
+
+For this private, personal-device installation, ignored `.env.local` sets `EXPO_PUBLIC_PERSONAL_BUILD=1`. It hides the visible map/provider credit labels and the native information ornament, and removes the extra bottom spacing. Licence/source information is retained under **Map options → About map data**; routing service information and the map-report link remain in route Details. The search screen has no credit footer. `.env.example` defaults the personal flag to 0, so public/shared builds retain visible map and route credits. Review provider terms and attribution before distributing the app; personal use should not be assumed to waive a hosting service's separate conditions.
+
+The official OpenStreetMap attribution guideline distinguishes public and internal use: https://osmfoundation.org/wiki/Licence/Attribution_Guidelines. Provider terms remain separate. This presentation change does not remove source metadata or change tile/search/routing endpoints.
+
+The 35 tests include new burst-typing debounce, clearing/closing cancellation, immediate submit without a delayed duplicate, and station-platform grouping checks, in addition to GPS, style, search client, and driving-route tests.
+
+The personal Release build was rebuilt, passed strict/deep signing verification, installed and launched on the physical iPhone with Metro stopped. The map was visually checked with no provider credit strip or native attribution ornament. A live Bandra search reached Photon successfully; automatic on-device suggestion timing and selection remain manual checks in this revision. Lint, TypeScript and all 35 tests pass. Apple/Google traffic options have been researched only; the installed app still uses OSRM without live traffic.

@@ -35,6 +35,29 @@ export function normalizeQuery(value: string): string {
   return value.normalize('NFC').replace(/\s+/g, ' ').trim();
 }
 
+// Debounce typing; an explicit keyboard submit must not send a duplicate later.
+export function createSuggestionScheduler(onSearch: (query: string) => void, delayMs = 600) {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const cancel = () => { if (timer !== undefined) clearTimeout(timer); timer = undefined; };
+  const validQuery = (value: string) => {
+    const query = normalizeQuery(value);
+    return query.length >= MIN_QUERY_LENGTH && query.length <= MAX_QUERY_LENGTH ? query : null;
+  };
+  return {
+    cancel,
+    schedule(value: string) {
+      cancel();
+      const query = validQuery(value);
+      if (query) timer = setTimeout(() => { timer = undefined; onSearch(query); }, delayMs);
+    },
+    submit(value: string) {
+      cancel();
+      const query = validQuery(value);
+      if (query) onSearch(query);
+    },
+  };
+}
+
 export function parsePlaces(payload: unknown): Place[] {
   const collection = record(payload);
   if (collection?.type !== 'FeatureCollection' || !Array.isArray(collection.features)) {
@@ -62,7 +85,8 @@ export function parsePlaces(payload: unknown): Place[] {
       ? `${osmType}${osmId}` : `${name}:${longitude}:${latitude}`;
     // Some landmarks have multiple OSM objects within a few meters of each other.
     const nearbyKey = `${name.toLowerCase()}:${address.toLowerCase()}:${longitude.toFixed(4)}:${latitude.toFixed(4)}`;
-    if (seen.has(id) || seen.has(nearbyKey)) continue;
+    const nearbyDuplicate = places.some(place => place.name.toLowerCase() === name.toLowerCase() && place.address.toLowerCase() === address.toLowerCase() && Math.hypot((place.coordinates[0] - longitude) * Math.cos(latitude * Math.PI / 180) * 111320, (place.coordinates[1] - latitude) * 111320) < 250);
+    if (seen.has(id) || seen.has(nearbyKey) || nearbyDuplicate) continue;
     seen.add(id); seen.add(nearbyKey);
     const zoomByType: Record<string, number> = { country: 4.8, state: 7, county: 10, city: 11.7, district: 13, locality: 14, street: 16 };
     const rawCategory = text(properties.osm_value);
@@ -123,11 +147,14 @@ export function createPlaceSearchClient({ endpoint = SEARCH_ENDPOINT, fetcher = 
       if (url.protocol !== 'https:') throw new Error('HTTPS required');
     } catch { throw new PlaceSearchError('configuration', 'Place search is not configured correctly.'); }
     url.searchParams.set('q', query);
-    url.searchParams.set('limit', String(RESULT_LIMIT));
+    url.searchParams.set('limit', String(RESULT_LIMIT + 4));
     url.searchParams.set('lang', 'en');
     // Public city-center bias only. Never transmit the phone's GPS position.
     url.searchParams.set('lat', '18.94');
     url.searchParams.set('lon', '72.83');
+    // Prefer the wider Mumbai region for local prefixes, without a GPS upload.
+    url.searchParams.set('zoom', '10');
+    url.searchParams.set('location_bias_scale', '0.2');
     await waitFor(Math.max(0, nextRequestAt - now()), signal);
     if (signal?.aborted) throw aborted();
     nextRequestAt = now() + minimumIntervalMs;

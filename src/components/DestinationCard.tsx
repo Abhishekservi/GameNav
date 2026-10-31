@@ -33,7 +33,7 @@ export function DestinationCard({ place, moving, onView, onChange, onClear, rout
         <Pressable accessibilityRole="button" onPress={onChange} style={s.secondary}><Text style={s.secondaryText}>Change</Text></Pressable>
         <Pressable accessibilityRole="button" accessibilityLabel={showDetails ? 'Hide route details' : 'Show route details'} accessibilityState={{ expanded: showDetails }} onPress={() => setDetails(value => !value)} style={s.secondary}><Text style={s.secondaryText}>{showDetails ? 'Less' : 'Details'}</Text></Pressable>
       </View>
-      {!route && <Text style={s.disclosure}>Uses your GPS and destination · {ROUTING_CREDIT}</Text>}
+      {!route && <Text style={s.disclosure}>Uses your current GPS position</Text>}
     </>}
     {showDetails && <ScrollView style={{ maxHeight: height * 0.25 }} contentContainerStyle={s.details} showsVerticalScrollIndicator>
       {!!place.address && <Text style={s.note}>{place.address}</Text>}
