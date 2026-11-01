@@ -3,6 +3,7 @@ import { ActivityIndicator, Alert, Linking, Pressable, ScrollView, StyleSheet, T
 import type { Place } from '../search/places';
 import { formatDistance, formatDuration, ROUTING_CREDIT, ROUTING_CREDIT_URL } from '../routing/routes';
 import type { RouteState } from '../routing/useDrivingRoute';
+import { SavePlaceButton } from './SavedPlaces';
 
 function openCredit(url: string) {
   void Linking.openURL(url).catch(() => Alert.alert('Link unavailable', 'Please try again when you have a connection.'));
@@ -17,11 +18,12 @@ export function DestinationCard({ place, moving, onView, onChange, onClear, rout
   const loading = routing.status === 'loading';
   const needsRecalculation = !!route && startChanged;
   const primaryDisabled = loading ? false : route && !needsRecalculation ? !!startError : !canRoute;
-  const primaryLabel = loading ? 'Cancel' : needsRecalculation ? 'Recalculate' : route ? 'Start journey' : routing.status === 'error' ? 'Try again' : 'Get route';
+  const primaryLabel = loading ? 'Cancel' : needsRecalculation ? 'Recalculate' : route ? 'Start journey' : routing.status === 'error' ? 'Try again' : 'Directions';
   const showDetails = details && !moving;
   return <View style={s.card}>
     <View style={s.header}>
       <Text numberOfLines={1} style={s.name}>{place.name}</Text>
+      {!moving && <SavePlaceButton place={place} disabled={moving} />}
       {!moving && <Pressable accessibilityRole="button" accessibilityLabel="Clear destination and route" onPress={onClear} style={s.close}><Text style={s.closeText}>×</Text></Pressable>}
     </View>
     {route ? <>

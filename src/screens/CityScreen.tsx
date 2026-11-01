@@ -9,11 +9,13 @@ import { JourneyAwake, JourneyCard, TurnBanner } from '../components/JourneyHUD'
 import { useReducedMotion } from '../hooks/useReducedMotion';
 import { useGPSState } from '../location/GPSProvider';
 import { isUsableFix, speedKmh } from '../location/position';
-import { distanceBetween, ROUTING_CREDIT, ROUTING_CREDIT_URL } from '../routing/routes';
+import { distanceBetween, isCoordinate, ROUTING_CREDIT, ROUTING_CREDIT_URL } from '../routing/routes';
 import { useDrivingRoute } from '../routing/useDrivingRoute';
 import { useJourney } from '../routing/useJourney';
 import { IS_DEFAULT_PROVIDER, MUMBAI, createMapStyle, type MapTheme } from '../maps/style';
 import { useDestination } from '../search/DestinationProvider';
+import { useSavedPlaces } from '../saved/SavedPlacesProvider';
+import { SAVED_SLOTS, slotForPlace } from '../saved/places';
 
 const vehicleImages = { vehicle: require('../../assets/vehicle.png'), direction: require('../../assets/direction-arrow.png'), destination: require('../../assets/destination-pin.png') };
 const initialViewState = { center: MUMBAI, zoom: 14.8, pitch: 0, bearing: 0 };
@@ -25,7 +27,9 @@ export default function CityScreen() {
   const { height, fontScale } = useWindowDimensions();
   const smallScreen = height < 740 || fontScale > 1.3;
   const gps = useGPSState();
-  const { destination, revision: destinationRevision, clear: clearDestination } = useDestination();
+  const { destination, revision: destinationRevision, clear: clearDestination, select: selectDestination } = useDestination();
+  const saved = useSavedPlaces();
+  const destinationSlot = destination ? slotForPlace(saved.places, destination) : null;
   const { state: routing, calculate: calculateRoute, clear: clearRoute } = useDrivingRoute(destinationRevision);
   const route = routing.route;
   const journey = useJourney(route, gps.fix, gps.fresh, gps.now);
@@ -47,9 +51,11 @@ export default function CityScreen() {
   const [topHeight, setTopHeight] = useState(54);
   const [overviewMode, setOverviewMode] = useState(false);
   const [showBuildings, setShowBuildings] = useState(false);
-  const pitch = showBuildings ? 48 : 0;
-  const followZoom = showBuildings ? 16.6 : 15.3;
-  const mapStyle = useMemo(() => createMapStyle(theme, showBuildings), [theme, showBuildings]);
+  const navigationView = journey.active && !overviewMode;
+  const renderBuildings = showBuildings || navigationView;
+  const pitch = navigationView ? 55 : showBuildings ? 48 : 0;
+  const followZoom = navigationView ? 17.2 : showBuildings ? 16.6 : 15.3;
+  const mapStyle = useMemo(() => createMapStyle(theme, renderBuildings), [theme, renderBuildings]);
   const speed = speedKmh(gps.fix, gps.fresh);
   // Keep secondary controls quiet while moving, including when stale GPS last indicated motion.
   const moving = (gps.fix?.coords.speed ?? 0) > 2.2;
@@ -70,6 +76,10 @@ export default function CityScreen() {
     if (error) { Alert.alert('Before you start', error); return; }
     firstFollow.current = true;
     setFollowing(true); setHeadingUp(true); setOverviewMode(false); setOptionsOpen(false);
+  };
+  const endJourney = () => {
+    journey.end(); firstFollow.current = true;
+    setHeadingUp(false); setOverviewMode(false); setFollowing(true);
   };
   const viewRoute = useCallback(() => {
     if (!route || mapState !== 'ready') return;
@@ -97,11 +107,15 @@ export default function CityScreen() {
 
   useEffect(() => {
     if (!following || !gps.fresh || longitude === undefined || latitude === undefined || mapState !== 'ready') return;
-    const options = { center: [longitude, latitude] as [number, number], bearing: headingUp ? gps.heading : 0, pitch, zoom: followZoom, duration: reducedMotion ? 0 : firstFollow.current ? 1200 : 800, padding: { top: topHeight + 32 + insets.top, bottom: panelHeight + 80 + insets.bottom, left: 35, right: 35 } };
+    const topEdge = topHeight + 32 + insets.top;
+    const bottomEdge = panelHeight + (navigationView ? 32 : 80) + insets.bottom;
+    const freeHeight = Math.max(0, height - topEdge - bottomEdge);
+    // Position the vehicle lower in the unobscured map to reveal more road ahead.
+    const options = { center: [longitude, latitude] as [number, number], bearing: headingUp ? gps.heading : 0, pitch, zoom: followZoom, duration: reducedMotion ? 0 : firstFollow.current ? 1200 : 800, padding: { top: topEdge + (navigationView ? freeHeight * 0.36 : 0), bottom: bottomEdge, left: 35, right: 35 } };
     if (firstFollow.current) camera.current?.flyTo(options);
     else camera.current?.easeTo(options);
     firstFollow.current = false;
-  }, [longitude, latitude, gps.heading, gps.fresh, following, headingUp, mapState, reducedMotion, pitch, followZoom, topHeight, panelHeight, insets.top, insets.bottom]);
+  }, [longitude, latitude, gps.heading, gps.fresh, following, headingUp, mapState, reducedMotion, pitch, followZoom, navigationView, height, topHeight, panelHeight, insets.top, insets.bottom]);
 
   const retryMap = useCallback(() => { setTileError(false); setMapState('loading'); setAttempt(n => n + 1); }, []);
   const openSettings = () => { void Linking.openSettings().catch(() => Alert.alert('Open Settings', 'Open iPhone Settings → GameNav → Location to enable access.')); };
@@ -111,7 +125,7 @@ export default function CityScreen() {
     firstFollow.current = true;
     setFollowing(true);
     // Also recenter when already following.
-    if (coordinates) camera.current?.flyTo({ center: coordinates, zoom: followZoom, pitch, bearing: headingUp ? gps.heading : 0, duration: reducedMotion ? 0 : 1000 });
+    if (coordinates) camera.current?.flyTo({ center: coordinates, zoom: journey.active ? 17.2 : followZoom, pitch: journey.active ? 55 : pitch, bearing: headingUp ? gps.heading : 0, duration: reducedMotion ? 0 : 1000 });
   };
   const overview = () => {
     setOverviewMode(false); setOptionsOpen(false);
@@ -159,11 +173,17 @@ export default function CityScreen() {
 
   return <View style={s.screen}>
     {journey.active && journey.reading?.status !== 'complete' && <JourneyAwake />}
-    <Map key={attempt} ref={map} style={StyleSheet.absoluteFill} mapStyle={mapStyle} tintColor={colors.accent} attribution={showMapCredits} attributionPosition={{ bottom: insets.bottom + 12, right: 14 }} logo={false} compass={false} touchPitch={showBuildings}
+    <Map key={attempt} ref={map} style={StyleSheet.absoluteFill} mapStyle={mapStyle} tintColor={colors.accent} attribution={showMapCredits} attributionPosition={{ bottom: insets.bottom + 12, right: 14 }} logo={false} compass={false} touchPitch={renderBuildings}
       onDidFinishLoadingStyle={() => { setMapState('ready'); }}
       onDidFailLoadingMap={() => setMapState('error')}
       onDidFinishRenderingMapFully={() => setTileError(false)}
-      onRegionWillChange={event => { if (event.nativeEvent.userInteraction) { setOverviewMode(false); setFollowing(false); firstFollow.current = true; } }}>
+      onLongPress={event => {
+        const point = event.nativeEvent.lngLat;
+        if (moving || journey.active || !isCoordinate(point)) return;
+        setOptionsOpen(false);
+        selectDestination({ id: `pin:${point[0].toFixed(6)},${point[1].toFixed(6)}`, name: 'Dropped pin', address: 'Selected on the map', category: 'pin', zoom: 17, coordinates: [point[0], point[1]] });
+      }}
+      onRegionWillChange={event => { if (event.nativeEvent.userInteraction) { if (!journey.active) setOverviewMode(false); setFollowing(false); firstFollow.current = true; } }}>
       <Camera ref={camera} initialViewState={initialViewState} minZoom={3} maxZoom={19} />
       <Images images={vehicleImages} />
       {routeGeometry && <GeoJSONSource id="driving-route" data={routeGeometry}>
@@ -176,11 +196,19 @@ export default function CityScreen() {
         <Layer id="vehicle-halo" type="circle" paint={{ 'circle-radius': theme === 'arcade' ? 19 : 26, 'circle-color': '#111610', 'circle-opacity': gps.fresh ? 0.22 : 0.08 }} />
         <Layer id="vehicle" type="symbol" layout={{ 'icon-image': theme === 'arcade' ? 'direction' : 'vehicle', 'icon-size': theme === 'arcade' ? 0.46 : 0.55, 'icon-allow-overlap': true, 'icon-ignore-placement': true, 'icon-rotation-alignment': 'map', 'icon-pitch-alignment': 'viewport', 'icon-rotate': gps.heading }} paint={{ 'icon-opacity': gps.fresh ? 1 : 0.35 }} />
       </LayerAnnotation>}
-      {destination && <LayerAnnotation id="destination-position" lngLat={destination.coordinates}>
+      {destination && !destinationSlot && <LayerAnnotation id="destination-position" lngLat={destination.coordinates}>
         <Layer id="destination-target" type="circle" paint={{ 'circle-color': '#9b4dff', 'circle-radius': 5, 'circle-stroke-color': '#f1f1f1', 'circle-stroke-width': 1 }} />
         <Layer id="destination-pin" type="symbol" layout={{ 'icon-image': 'destination', 'icon-size': 0.5, 'icon-anchor': 'bottom', 'icon-allow-overlap': true, 'icon-ignore-placement': true, 'icon-pitch-alignment': 'viewport', 'icon-rotation-alignment': 'viewport' }} />
         <Layer id="destination-label" type="symbol" layout={{ 'text-field': ['literal', destination.name], 'text-font': ['Noto Sans Regular'], 'text-size': 12, 'text-anchor': 'top', 'text-offset': [0, 0.6], 'text-max-width': 14 }} paint={{ 'text-color': '#f1f1f1', 'text-halo-color': '#131313', 'text-halo-width': 2 }} />
       </LayerAnnotation>}
+      {SAVED_SLOTS.map(slot => {
+        const place = saved.places[slot.key];
+        if (!place || (journey.active && destinationSlot !== slot.key)) return null;
+        return <LayerAnnotation key={slot.key} id={`mission-${slot.key}`} lngLat={place.coordinates} onPress={event => { event.stopPropagation(); if (!moving && !journey.active) { setOptionsOpen(false); selectDestination(place); } }}>
+          <Layer id={`mission-${slot.key}-badge`} type="circle" paint={{ 'circle-radius': 18, 'circle-color': '#15161b', 'circle-stroke-width': 2.5, 'circle-stroke-color': slot.color, 'circle-pitch-alignment': 'viewport', 'circle-pitch-scale': 'viewport' }} />
+          <Layer id={`mission-${slot.key}-letter`} type="symbol" layout={{ 'text-field': slot.letter, 'text-font': ['Noto Sans Regular'], 'text-size': 25, 'text-allow-overlap': true, 'text-ignore-placement': true, 'text-pitch-alignment': 'viewport', 'text-rotation-alignment': 'viewport' }} paint={{ 'text-color': slot.color, 'text-halo-color': slot.color, 'text-halo-width': 0.5 }} />
+        </LayerAnnotation>;
+      })}
     </Map>
 
     <View pointerEvents="box-none" onLayout={event => setTopHeight(Math.ceil(event.nativeEvent.layout.height))} style={[s.top, { top: insets.top + 10, left: Math.max(insets.left, 16), right: Math.max(insets.right, 16) }]}>
@@ -197,7 +225,7 @@ export default function CityScreen() {
     </View>
     {moving && <View style={[s.speedBadge, { bottom: insets.bottom + panelHeight + creditInset + 14, left: Math.max(insets.left, 16) }]}><Text style={s.speed}>{speed === null ? '—' : speed}</Text><Text style={s.speedUnit}>km/h</Text></View>}
     <View pointerEvents="box-none" onLayout={event => { const next = Math.ceil(event.nativeEvent.layout.height); setPanelHeight(current => Math.abs(current - next) > 1 ? next : current); }} style={[s.bottom, { bottom: insets.bottom + creditInset, left: Math.max(insets.left, 12), right: Math.max(insets.right, 12) }]}>
-      {journey.reading && destination ? <JourneyCard name={destination.name} reading={journey.reading} moving={moving} onEnd={journey.end} onOverview={viewRoute} onRecalculate={getRoute} /> : optionsOpen && !moving ? <View style={s.options}>
+      {journey.reading && destination ? <JourneyCard name={destination.name} reading={journey.reading} moving={moving} onEnd={endJourney} onOverview={viewRoute} onRecalculate={getRoute} /> : optionsOpen && !moving ? <View style={s.options}>
         <View style={s.optionsHeader}><Text style={s.optionsTitle}>Map options</Text><Pressable accessibilityRole="button" accessibilityLabel="Close map options" onPress={() => setOptionsOpen(false)} style={s.close}><Text style={s.closeText}>×</Text></Pressable></View>
         <ThemeSwitcher theme={theme} onChange={value => { void changeTheme(value); }} disabled={mapState === 'loading'} />
         <Pressable accessibilityRole="button" onPress={() => { void toggleBuildings(); }} style={s.optionRow}><Text style={s.optionLabel}>Buildings</Text><Text style={s.optionValue}>{showBuildings ? '3D' : 'Flat'} ›</Text></Pressable>
