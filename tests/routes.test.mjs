@@ -4,7 +4,9 @@ import { createRoutingClient, distanceBetween, formatDistance, formatDuration, p
 
 const origin = [72.8346, 18.9220];
 const destination = [72.8232, 18.9434];
-const payload = () => ({ code: 'Ok', routes: [{ distance: 4100, duration: 875, geometry: { type: 'LineString', coordinates: [origin, [72.83, 18.93], destination] } }], waypoints: [{ location: origin, distance: 0 }, { location: destination, distance: 0 }] });
+const midpoint = [72.83, 18.93];
+const step = (type, location, coordinates, distance, modifier) => ({ name: 'Test Road', distance, duration: distance / 5, maneuver: { type, location, modifier }, geometry: { type: 'LineString', coordinates } });
+const payload = () => ({ code: 'Ok', routes: [{ distance: 4100, duration: 875, geometry: { type: 'LineString', coordinates: [origin, midpoint, destination] }, legs: [{ steps: [step('depart', origin, [origin, midpoint], 1600), step('turn', midpoint, [midpoint, destination], 2500, 'left'), step('arrive', destination, [destination], 0)] }] }], waypoints: [{ location: origin, distance: 0 }, { location: destination, distance: 0 }] });
 const response = value => new Response(JSON.stringify(value));
 const makeClient = (fetcher, options = {}) => createRoutingClient({ endpoint: 'https://routing.example/route/v1/driving/?key=public', minimumIntervalMs: 0, fetcher, ...options });
 
@@ -17,6 +19,8 @@ test('parses real road geometry, meters, seconds, endpoints, and camera bounds',
   assert.deepEqual(route.bounds, [72.8232, 18.922, 72.8346, 18.9434]);
   assert.equal(route.startOffset, 0);
   assert.equal(route.endOffset, 0);
+  assert.equal(route.steps.length, 3);
+  assert.equal(route.steps[1].modifier, 'left');
 });
 
 test('rejects no-route and no-road responses without inventing a straight line', () => {
@@ -64,9 +68,23 @@ test('uses a car route endpoint with GeoJSON, preserves public parameters, and c
   assert.match(url.pathname, /route\/v1\/driving\/72\.834600,18\.922000;72\.823200,18\.943400$/);
   assert.equal(url.searchParams.get('geometries'), 'geojson');
   assert.equal(url.searchParams.get('overview'), 'full');
+  assert.equal(url.searchParams.get('steps'), 'true');
   assert.equal(url.searchParams.get('radiuses'), '500;500');
   assert.equal(url.searchParams.get('key'), 'public');
   assert.match(headers['User-Agent'], /^GameNav\//);
+});
+
+test('rejects absent, discontinuous or malformed maneuver data', () => {
+  const changes = [
+    p => { delete p.routes[0].legs; },
+    p => { p.routes[0].legs[0].steps = []; },
+    p => { p.routes[0].legs[0].steps[1].maneuver.location = [0, 0]; },
+    p => { p.routes[0].legs[0].steps[0].geometry.coordinates[1] = origin; },
+    p => { p.routes[0].legs[0].steps[0].maneuver.type = 'turn'; },
+    p => { p.routes[0].legs[0].steps[1].distance = 5; },
+    p => { p.routes[0].legs[0].steps[1].geometry.coordinates = [midpoint]; },
+  ];
+  for (const change of changes) { const value = payload(); change(value); assert.throws(() => parseRoute(value, origin, destination), error => error.code === 'response'); }
 });
 
 test('expires route cache rather than keeping old travel estimates indefinitely', async () => {

@@ -69,5 +69,5 @@ export function useGPS() {
   }, [active, attempt]);
 
   const fresh = active && state === 'live' && !!fix && now - fix.timestamp <= FIX_MAX_AGE_MS;
-  return { fix, heading, fresh, state: active ? state : 'paused' as GPSState, canAskAgain, retry };
+  return { fix, heading, fresh, now, state: active ? state : 'paused' as GPSState, canAskAgain, retry };
 }

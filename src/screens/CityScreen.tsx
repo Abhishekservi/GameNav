@@ -5,11 +5,13 @@ import { Alert, Linking, Pressable, ScrollView, StyleSheet, Text, View, useWindo
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Control, Notice, ThemeSwitcher, colors } from '../components/HUD';
 import { DestinationCard } from '../components/DestinationCard';
+import { JourneyAwake, JourneyCard, TurnBanner } from '../components/JourneyHUD';
 import { useReducedMotion } from '../hooks/useReducedMotion';
 import { useGPSState } from '../location/GPSProvider';
 import { isUsableFix, speedKmh } from '../location/position';
 import { distanceBetween, ROUTING_CREDIT, ROUTING_CREDIT_URL } from '../routing/routes';
 import { useDrivingRoute } from '../routing/useDrivingRoute';
+import { useJourney } from '../routing/useJourney';
 import { IS_DEFAULT_PROVIDER, MUMBAI, createMapStyle, type MapTheme } from '../maps/style';
 import { useDestination } from '../search/DestinationProvider';
 
@@ -26,6 +28,7 @@ export default function CityScreen() {
   const { destination, revision: destinationRevision, clear: clearDestination } = useDestination();
   const { state: routing, calculate: calculateRoute, clear: clearRoute } = useDrivingRoute(destinationRevision);
   const route = routing.route;
+  const journey = useJourney(route, gps.fix, gps.fresh, gps.now);
   const routeGeometry = useMemo(() => route ? { type: 'Feature' as const, properties: {}, geometry: route.geometry } : null, [route]);
   const viewedRoute = useRef<typeof route>(null);
   const viewedDestinationRevision = useRef(0);
@@ -41,6 +44,7 @@ export default function CityScreen() {
   const [attempt, setAttempt] = useState(0);
   const [optionsOpen, setOptionsOpen] = useState(false);
   const [panelHeight, setPanelHeight] = useState(0);
+  const [topHeight, setTopHeight] = useState(54);
   const [overviewMode, setOverviewMode] = useState(false);
   const [showBuildings, setShowBuildings] = useState(false);
   const pitch = showBuildings ? 48 : 0;
@@ -52,23 +56,30 @@ export default function CityScreen() {
   const coordinates: [number, number] | null = gps.fix ? [gps.fix.coords.longitude, gps.fix.coords.latitude] : null;
   const latitude = coordinates?.[1];
   const longitude = coordinates?.[0];
-  const startChanged = !!route && !!coordinates && gps.fresh && distanceBetween(route.origin, coordinates) > 150;
+  const startChanged = journey.needsRecalculation || (!!route && !!coordinates && gps.fresh && distanceBetween(route.origin, coordinates) > 150);
   const canRoute = !moving && gps.fresh && !!gps.fix && isUsableFix(gps.fix);
 
   const getRoute = () => {
     if (!destination || !canRoute || !gps.fix || !isUsableFix(gps.fix)) return;
+    journey.end();
     viewedRoute.current = null;
     void calculateRoute([gps.fix.coords.longitude, gps.fix.coords.latitude], destination.coordinates);
+  };
+  const startJourney = () => {
+    const error = journey.start();
+    if (error) { Alert.alert('Before you start', error); return; }
+    firstFollow.current = true;
+    setFollowing(true); setHeadingUp(true); setOverviewMode(false); setOptionsOpen(false);
   };
   const viewRoute = useCallback(() => {
     if (!route || mapState !== 'ready') return;
     setFollowing(false); setOverviewMode(true); firstFollow.current = true;
-    camera.current?.fitBounds(route.bounds, { bearing: 0, pitch: 0, duration: reducedMotion ? 0 : 1000, padding: { top: insets.top + 75, bottom: Math.min(height * 0.65, insets.bottom + panelHeight + creditInset + 24), left: 32, right: 82 } });
+    camera.current?.fitBounds(route.bounds, { bearing: 0, pitch: 0, duration: reducedMotion ? 0 : 1000, padding: { top: insets.top + topHeight + 22, bottom: Math.min(height * 0.65, insets.bottom + panelHeight + creditInset + 24), left: 32, right: 82 } });
     setShowBuildings(false);
-  }, [route, mapState, reducedMotion, insets.top, insets.bottom, height, panelHeight]);
+  }, [route, mapState, reducedMotion, insets.top, insets.bottom, height, panelHeight, topHeight]);
   useEffect(() => {
-    if (route && (route !== viewedRoute.current || (overviewMode && !following)) && mapState === 'ready' && !moving) { viewedRoute.current = route; viewRoute(); }
-  }, [route, mapState, moving, viewRoute, overviewMode, following]);
+    if (!journey.active && route && (route !== viewedRoute.current || (overviewMode && !following)) && mapState === 'ready' && !moving) { viewedRoute.current = route; viewRoute(); }
+  }, [route, mapState, moving, viewRoute, overviewMode, following, journey.active]);
 
   useEffect(() => {
     LogManager.onLog(({ message, level }) => {
@@ -86,11 +97,11 @@ export default function CityScreen() {
 
   useEffect(() => {
     if (!following || !gps.fresh || longitude === undefined || latitude === undefined || mapState !== 'ready') return;
-    const options = { center: [longitude, latitude] as [number, number], bearing: headingUp ? gps.heading : 0, pitch, zoom: followZoom, duration: reducedMotion ? 0 : firstFollow.current ? 1200 : 800, padding: { top: (moving ? 24 : 88) + insets.top, bottom: panelHeight + 80 + insets.bottom, left: 35, right: 35 } };
+    const options = { center: [longitude, latitude] as [number, number], bearing: headingUp ? gps.heading : 0, pitch, zoom: followZoom, duration: reducedMotion ? 0 : firstFollow.current ? 1200 : 800, padding: { top: topHeight + 32 + insets.top, bottom: panelHeight + 80 + insets.bottom, left: 35, right: 35 } };
     if (firstFollow.current) camera.current?.flyTo(options);
     else camera.current?.easeTo(options);
     firstFollow.current = false;
-  }, [longitude, latitude, gps.heading, gps.fresh, following, headingUp, mapState, reducedMotion, pitch, followZoom, moving, panelHeight, insets.top, insets.bottom]);
+  }, [longitude, latitude, gps.heading, gps.fresh, following, headingUp, mapState, reducedMotion, pitch, followZoom, topHeight, panelHeight, insets.top, insets.bottom]);
 
   const retryMap = useCallback(() => { setTileError(false); setMapState('loading'); setAttempt(n => n + 1); }, []);
   const openSettings = () => { void Linking.openSettings().catch(() => Alert.alert('Open Settings', 'Open iPhone Settings → GameNav → Location to enable access.')); };
@@ -147,6 +158,7 @@ export default function CityScreen() {
   const gpsNotice = !gps.fresh && <Notice title={gpsMessage} detail={smallScreen || moving ? undefined : gps.state === 'denied' ? 'Allow location in Settings to show your position.' : gps.state === 'weak' ? 'Enable Precise Location or move to an open area.' : 'Your live position and speed appear when GPS is available.'} action={gps.state === 'denied' || gps.state === 'disabled' || gps.state === 'weak' ? 'Location settings' : 'Retry GPS'} onPress={gps.state === 'denied' || gps.state === 'disabled' || gps.state === 'weak' ? openSettings : gps.retry} />;
 
   return <View style={s.screen}>
+    {journey.active && journey.reading?.status !== 'complete' && <JourneyAwake />}
     <Map key={attempt} ref={map} style={StyleSheet.absoluteFill} mapStyle={mapStyle} tintColor={colors.accent} attribution={showMapCredits} attributionPosition={{ bottom: insets.bottom + 12, right: 14 }} logo={false} compass={false} touchPitch={showBuildings}
       onDidFinishLoadingStyle={() => { setMapState('ready'); }}
       onDidFailLoadingMap={() => setMapState('error')}
@@ -171,28 +183,28 @@ export default function CityScreen() {
       </LayerAnnotation>}
     </Map>
 
-    <View pointerEvents="box-none" style={[s.top, { top: insets.top + 10, left: Math.max(insets.left, 16), right: Math.max(insets.right, 16) }]}>
-      {!moving && <Pressable accessibilityRole="button" accessibilityLabel="Search places or addresses" onPress={openSearch} style={({ pressed }) => [s.search, pressed && { opacity: 0.8 }]}>
+    <View pointerEvents="box-none" onLayout={event => setTopHeight(Math.ceil(event.nativeEvent.layout.height))} style={[s.top, { top: insets.top + 10, left: Math.max(insets.left, 16), right: Math.max(insets.right, 16) }]}>
+      {journey.reading ? <TurnBanner reading={journey.reading} /> : !moving && <Pressable accessibilityRole="button" accessibilityLabel="Search places or addresses" onPress={openSearch} style={({ pressed }) => [s.search, pressed && { opacity: 0.8 }]}>
         <View style={s.searchIcon}><View style={s.searchLens} /><View style={s.searchHandle} /></View><Text style={s.searchTitle}>Search places or addresses</Text>
       </Pressable>}
       {(mapState === 'loading' || mapState === 'error' || tileError) && <Notice title={mapState === 'loading' ? 'Loading map…' : 'Map tiles unavailable'} detail={mapState === 'loading' ? undefined : 'Check your connection and retry.'} loading={mapState === 'loading'} action={mapState !== 'loading' ? 'Retry' : undefined} onPress={retryMap} />}
-      {mapState === 'ready' && !tileError && gpsNotice}
+      {!journey.active && mapState === 'ready' && !tileError && gpsNotice}
     </View>
 
     <View pointerEvents="box-none" style={[s.floating, { right: Math.max(insets.right, 16), bottom: insets.bottom + panelHeight + creditInset + 14 }]}>
-      {!moving && <Control glyph="▱" label={optionsOpen ? 'Close map options' : 'Map options: theme, buildings, and orientation'} active={optionsOpen} onPress={() => { setOverviewMode(false); setOptionsOpen(value => !value); }} />}
+      {!journey.active && !moving && <Control glyph="▱" label={optionsOpen ? 'Close map options' : 'Map options: theme, buildings, and orientation'} active={optionsOpen} onPress={() => { setOverviewMode(false); setOptionsOpen(value => !value); }} />}
       <Control glyph="◎" label={gps.fresh ? 'Recenter on my location' : 'Enable or retry GPS'} active={following && gps.fresh} onPress={locate} />
     </View>
     {moving && <View style={[s.speedBadge, { bottom: insets.bottom + panelHeight + creditInset + 14, left: Math.max(insets.left, 16) }]}><Text style={s.speed}>{speed === null ? '—' : speed}</Text><Text style={s.speedUnit}>km/h</Text></View>}
     <View pointerEvents="box-none" onLayout={event => { const next = Math.ceil(event.nativeEvent.layout.height); setPanelHeight(current => Math.abs(current - next) > 1 ? next : current); }} style={[s.bottom, { bottom: insets.bottom + creditInset, left: Math.max(insets.left, 12), right: Math.max(insets.right, 12) }]}>
-      {optionsOpen && !moving ? <View style={s.options}>
+      {journey.reading && destination ? <JourneyCard name={destination.name} reading={journey.reading} moving={moving} onEnd={journey.end} onOverview={viewRoute} onRecalculate={getRoute} /> : optionsOpen && !moving ? <View style={s.options}>
         <View style={s.optionsHeader}><Text style={s.optionsTitle}>Map options</Text><Pressable accessibilityRole="button" accessibilityLabel="Close map options" onPress={() => setOptionsOpen(false)} style={s.close}><Text style={s.closeText}>×</Text></Pressable></View>
         <ThemeSwitcher theme={theme} onChange={value => { void changeTheme(value); }} disabled={mapState === 'loading'} />
         <Pressable accessibilityRole="button" onPress={() => { void toggleBuildings(); }} style={s.optionRow}><Text style={s.optionLabel}>Buildings</Text><Text style={s.optionValue}>{showBuildings ? '3D' : 'Flat'} ›</Text></Pressable>
         <Pressable accessibilityRole="button" onPress={() => { setHeadingUp(value => !value); if (gps.fresh) setFollowing(true); }} style={s.optionRow}><Text style={s.optionLabel}>Orientation</Text><Text style={s.optionValue}>{headingUp ? 'Heading up' : 'North up'} ›</Text></Pressable>
         <Pressable accessibilityRole="button" onPress={overview} style={s.optionRow}><Text style={s.optionLabel}>Explore Mumbai</Text><Text style={s.optionValue}>↗</Text></Pressable>
         <Pressable accessibilityRole="button" onPress={() => { void map.current?.showAttribution().catch(() => Alert.alert('Map data', 'OpenFreeMap, OpenMapTiles and OpenStreetMap. Licence details are in the project documentation.')); }} style={s.optionRow}><Text style={s.optionLabel}>About map data</Text><Text style={s.optionValue}>ⓘ</Text></Pressable>
-      </View> : destination ? <DestinationCard key={destinationRevision} place={destination} moving={moving} onView={route ? viewRoute : viewDestination} onChange={openSearch} onClear={clearDestination} routing={routing} canRoute={canRoute} startChanged={startChanged} onRoute={getRoute} onCancel={clearRoute} /> : null}
+      </View> : destination ? <DestinationCard key={destinationRevision} place={destination} moving={moving} onView={route ? viewRoute : viewDestination} onChange={openSearch} onClear={clearDestination} routing={routing} canRoute={canRoute} startChanged={startChanged} onRoute={getRoute} onCancel={clearRoute} onStart={startJourney} startError={journey.startError} /> : null}
     </View>
     {showMapCredits && <View style={[s.credits, { bottom: insets.bottom + 2 }]}>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.creditsContent}>

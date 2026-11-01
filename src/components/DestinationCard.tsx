@@ -8,13 +8,16 @@ function openCredit(url: string) {
   void Linking.openURL(url).catch(() => Alert.alert('Link unavailable', 'Please try again when you have a connection.'));
 }
 
-type Props = { place: Place; moving: boolean; onView: () => void; onChange: () => void; onClear: () => void; routing: RouteState; canRoute: boolean; startChanged: boolean; onRoute: () => void; onCancel: () => void };
+type Props = { place: Place; moving: boolean; onView: () => void; onChange: () => void; onClear: () => void; routing: RouteState; canRoute: boolean; startChanged: boolean; onRoute: () => void; onCancel: () => void; onStart: () => void; startError: string | null };
 
-export function DestinationCard({ place, moving, onView, onChange, onClear, routing, canRoute, startChanged, onRoute, onCancel }: Props) {
+export function DestinationCard({ place, moving, onView, onChange, onClear, routing, canRoute, startChanged, onRoute, onCancel, onStart, startError }: Props) {
   const [details, setDetails] = useState(false);
   const { height } = useWindowDimensions();
   const route = routing.route;
   const loading = routing.status === 'loading';
+  const needsRecalculation = !!route && startChanged;
+  const primaryDisabled = loading ? false : route && !needsRecalculation ? !!startError : !canRoute;
+  const primaryLabel = loading ? 'Cancel' : needsRecalculation ? 'Recalculate' : route ? 'Start journey' : routing.status === 'error' ? 'Try again' : 'Get route';
   const showDetails = details && !moving;
   return <View style={s.card}>
     <View style={s.header}>
@@ -23,14 +26,14 @@ export function DestinationCard({ place, moving, onView, onChange, onClear, rout
     </View>
     {route ? <>
       <View style={s.summary}><Text style={s.duration}>~{formatDuration(route.duration)}</Text><Text style={s.distance}>{formatDistance(route.distance)}</Text></View>
-      <Text style={s.note}>{startChanged ? 'Start changed · recalculate in Details' : 'Route preview · no live traffic or turn guidance'}</Text>
+      <Text style={s.note}>{needsRecalculation ? 'Update the route from your current location' : startError || 'On-screen guidance · no live traffic'}</Text>
     </> : <Text accessibilityLiveRegion="polite" style={s.note}>{routing.status === 'error' ? routing.message : loading ? 'Finding a driving route…' : !canRoute ? 'Waiting for a precise GPS position' : 'Get a driving route from your location'}</Text>}
     {!moving && <>
       <View style={s.actions}>
-        <Pressable accessibilityRole="button" accessibilityLabel={route ? 'View whole route' : loading ? 'Cancel route calculation' : 'Get driving route'} disabled={!route && !loading && !canRoute} onPress={route ? onView : loading ? onCancel : onRoute} style={({ pressed }) => [s.primary, (pressed || (!route && !loading && !canRoute)) && s.dim]}>
-          {loading && <ActivityIndicator color="#ffffff" size="small" />}<Text style={s.primaryText}>{route ? 'Overview' : loading ? 'Cancel' : routing.status === 'error' ? 'Try again' : 'Get route'}</Text>
+        <Pressable accessibilityRole="button" accessibilityLabel={primaryLabel} accessibilityState={{ disabled: primaryDisabled }} disabled={primaryDisabled} onPress={loading ? onCancel : route && !needsRecalculation ? onStart : onRoute} style={({ pressed }) => [s.primary, (pressed || primaryDisabled) && s.dim]}>
+          {loading && <ActivityIndicator color="#ffffff" size="small" />}<Text style={s.primaryText}>{primaryLabel}</Text>
         </Pressable>
-        <Pressable accessibilityRole="button" onPress={onChange} style={s.secondary}><Text style={s.secondaryText}>Change</Text></Pressable>
+        <Pressable accessibilityRole="button" onPress={route ? onView : onChange} style={s.secondary}><Text style={s.secondaryText}>{route ? 'Overview' : 'Change'}</Text></Pressable>
         <Pressable accessibilityRole="button" accessibilityLabel={showDetails ? 'Hide route details' : 'Show route details'} accessibilityState={{ expanded: showDetails }} onPress={() => setDetails(value => !value)} style={s.secondary}><Text style={s.secondaryText}>{showDetails ? 'Less' : 'Details'}</Text></Pressable>
       </View>
       {!route && <Text style={s.disclosure}>Uses your current GPS position</Text>}
@@ -39,6 +42,7 @@ export function DestinationCard({ place, moving, onView, onChange, onClear, rout
       {!!place.address && <Text style={s.note}>{place.address}</Text>}
       {route && <>
         <Text style={s.note}>Estimates are totals at calculation, not remaining travel time.</Text>
+        <Pressable accessibilityRole="button" onPress={onChange} style={s.detailButton}><Text style={s.secondaryText}>Change destination</Text></Pressable>
         <Text style={s.note}>Road access: {formatDistance(route.startOffset)} from start, {formatDistance(route.endOffset)} from pin. Access paths are not included.</Text>
         <Pressable accessibilityRole="button" disabled={!canRoute} onPress={onRoute} style={[s.detailButton, !canRoute && s.dim]}><Text style={s.secondaryText}>Recalculate from my location</Text></Pressable>
       </>}

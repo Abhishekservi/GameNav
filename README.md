@@ -2,6 +2,8 @@
 
 Game-inspired city map for iPhone, built with Expo SDK 58, React Native 0.88, TypeScript, and MapLibre React Native 11.5.1. The map starts over South Mumbai. Once a recent, accurate GPS fix is available, it follows your actual location, wherever you are.
 
+For use away from the Mac, install the **Release** build described under **Use GameNav away from the Mac**. It embeds the app code and needs no Metro connection. Internet access is still needed for maps, search and new route requests.
+
 ## Run the app
 
 Run commands from the repository root, which contains the map implementation. The nested `gamenav/` directory is a separate starter app and has not been modified.
@@ -114,7 +116,7 @@ The configured bundle identifier is `com.abhishekchoudhary.gamenav`. The initial
 - Permission recovery, service-disabled and weak-GPS states, stale-position indication, map loading timeout, native tile-error notices, and map/GPS retry controls.
 - A rounded search bar, compact destination/route card, two circular map controls, Reduce Motion support, and 44-point or larger touch targets. The layers button opens Map options for themes, buildings, orientation, and Mumbai overview. Search and setup controls hide while moving; a small speed badge appears. The old SHOW HUD/FULL MAP panels are removed.
 
-Destination search is live: submit a place/address query, select a real result, and inspect its purple pin and destination card. A driving-route preview can calculate a real road path, distance, and estimated travel duration. There is **no live traffic, live arrival ETA, speed-limit detection, turn guidance, automatic rerouting, background tracking, or offline map download**. GPS speed is informational. Keep eyes on the road and use a passenger for setup.
+Destination search is live: select a real result, calculate a real road route, then tap **Start journey** while stopped. A compact banner shows the next OSRM maneuver and GPS-based distance to it. There is **no live traffic, live arrival ETA, speed-limit detection, spoken guidance, automatic rerouting, background tracking, or offline map download**. GPS speed is informational. Keep eyes on the road and use a passenger for setup.
 
 ## Map provider and attribution
 
@@ -134,7 +136,7 @@ npx expo-doctor
 npx expo export --platform ios --output-dir dist/ios-check
 ```
 
-The Node tests use built-in TypeScript stripping (Node 22.18+ or 24+). The 35 tests cover invalid/stale GPS fixes, unknown speeds, compass wraparound, both themes in 2D/3D, the routing client (described below), and the search client: coordinate validation, deduplication, query encoding, caching/expiry, cancellation, provider errors/cooldowns, timeouts, and serialized requests. The export check verifies the Hermes JavaScript bundle and assets; it does not compile or sign the native iOS app.
+The Node tests use built-in TypeScript stripping (Node 22.18+ or 24+). The 43 tests cover invalid/stale GPS fixes, unknown speeds, compass wraparound, both themes in 2D/3D, real maneuver parsing, journey progress/recovery/completion, and routing/search clients: coordinate validation, deduplication, query encoding, caching/expiry, cancellation, provider errors/cooldowns, timeouts, and serialized requests. The export check verifies the Hermes JavaScript bundle and assets; it does not compile or sign the native iOS app.
 
 ## Physical iPhone acceptance checks
 
@@ -148,15 +150,15 @@ After installing a signed development build:
 6. Background and resume the app; confirm foreground subscriptions resume. Enable Reduce Motion and large text; check HUD spacing and animation behavior.
 7. With a passenger operating the app, verify moving mode removes search/theme controls and keeps the GPS and camera controls available. Confirm all attribution links remain reachable.
 
-## Current verification status
+## Earlier physical-device verification
 
-All phases of local development, native compilation, free Apple Account signing, physical iPhone installation, and on-device runtime validation are **complete and verified**:
+The earlier map/search checkpoint completed local development, native compilation, free Apple Account signing, physical iPhone installation, and on-device runtime validation:
 - **Local Xcode Build & Free Signing**: Built locally targeting iPhone 14 with personal team `WJ7K33HG5V`.
 - **Physical Device Execution**: Verified on physical hardware (iPhone 14, iOS 27.0.1).
 - **Live Vector Map & HUD**: Verified via live screen capture showing 3D buildings, vehicle tracking, GPS fix reception (±14 m), and theme controls.
 - **Code Quality**: Lint (`expo lint`), TypeScript (`tsc --noEmit`), and 35/35 tests pass with zero errors.
 
-The dependency audit currently reports 9 entries (3 high, 6 low), including advisories inherited through Expo tooling. Its proposed automatic fix downgrades Expo to SDK 51, so that incompatible change was not applied. Review dependency advisories before production store release.
+At that checkpoint the dependency audit reported 9 entries (3 high, 6 low), including advisories inherited through Expo tooling. Its proposed automatic fix downgraded Expo to SDK 51, so that incompatible change was not applied. This historical count is not a current audit report.
 
 ## Pause-map styling revision
 
@@ -249,3 +251,17 @@ The official OpenStreetMap attribution guideline distinguishes public and intern
 The 35 tests include new burst-typing debounce, clearing/closing cancellation, immediate submit without a delayed duplicate, and station-platform grouping checks, in addition to GPS, style, search client, and driving-route tests.
 
 The personal Release build was rebuilt, passed strict/deep signing verification, installed and launched on the physical iPhone with Metro stopped. The map was visually checked with no provider credit strip or native attribution ornament. A live Bandra search reached Photon successfully; automatic on-device suggestion timing and selection remain manual checks in this revision. Lint, TypeScript and all 35 tests pass. Apple/Google traffic options have been researched only; the installed app still uses OSRM without live traffic.
+
+## Foreground journeys and on-screen maneuvers — 1 November 2026
+
+Earlier sections record historical build checkpoints. This revision adds **Get route → Start journey → End journey**. OSRM requests now include `steps=true`; maneuver geometry, continuity, endpoints and distances are validated before a route is accepted. No turn directions are inferred from decorative geometry. A live public Mumbai route passed this parser with 19 steps and 4,099 meters of road geometry.
+
+Start requires a fresh GPS fix with accuracy of 35 meters or better, a stopped vehicle, and a route calculated within five minutes whose requested origin remains within 150 meters. Otherwise wait for GPS or use **Recalculate**. Starting enables heading-up follow and replaces search/options with a compact next-maneuver banner and journey card. The banner handles turns, U-turns, ramps, forks and numbered roundabout exits. Approximate remaining road distance is updated from accepted GPS projections; the preview duration is not presented as a live ETA. Dragging pauses camera follow; the GPS button recenters. **End journey** remains accessible while moving and returns to the preview.
+
+Weak/stale GPS, a position away from the route, opposite travel direction, ambiguous overlapping road geometry or implausible progress suspend turn prompts and remaining distance. Recovery can resume on the original route; **Recalculate** is manual and available when stopped. There is no automatic network request from GPS movement. These are conservative local geometry checks, not a full road-network map-matching service. Building entrances and access paths between a snapped road endpoint and the destination pin remain outside the driving route.
+
+Completion requires three distinct precise, stopped GPS fixes near the road endpoint. The app says **Driving route complete**, and identifies a remaining gap to the destination pin when applicable. It does not guarantee arrival at a building entrance. `expo-keep-awake` keeps the display awake during an active journey and releases it when ended/completed. Adding this direct native dependency requires CocoaPods synchronization and a native rebuild; the Release build embeds all JavaScript and assets for use without Metro.
+
+Validation: lint, TypeScript and all 43 tests pass, including start guards, maneuver formatting, advancement across a turn, weak/stale/out-of-order GPS, off-route recovery, opposite direction, implausible jumps, overlapping geometry, endpoint completion and malformed maneuver responses. Synthetic location sequences exist only in tests. Actual road testing with a passenger is still needed; automated checks do not establish production navigation reliability. Keep GameNav in the foreground with internet available for map/search/new routes. Voice, traffic, background navigation and automatic rerouting are not included.
+
+Native validation: CocoaPods synchronization and the Xcode Release build succeeded. Strict/deep code-signature verification passed; the app contains an embedded 2.76 MB Hermes bundle. It was installed and launched on the physical iPhone 14 without a development URL, with no Metro server listening on port 8081. The grayscale vector map, position arrow and minimal controls were visually verified. The reused Personal Team profile expires **7 November 2026, 01:28 AM IST**. This confirms standalone launch, not an on-road maneuver test. Journey-screen acceptance is recorded separately below when confirmed.

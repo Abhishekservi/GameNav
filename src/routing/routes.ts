@@ -1,4 +1,14 @@
 export type Coordinate = [number, number];
+export type RouteStep = {
+  name: string;
+  distance: number;
+  duration: number;
+  geometry: Coordinate[];
+  location: Coordinate;
+  type: string;
+  modifier?: string;
+  exit?: number;
+};
 export type DrivingRoute = {
   geometry: { type: 'LineString'; coordinates: Coordinate[] };
   distance: number;
@@ -11,6 +21,7 @@ export type DrivingRoute = {
   endOffset: number;
   calculatedAt: number;
   bounds: [number, number, number, number];
+  steps: RouteStep[];
 };
 
 export const ROUTING_URL = process.env.EXPO_PUBLIC_ROUTING_URL || 'https://routing.openstreetmap.de/routed-car/route/v1/driving/';
@@ -29,6 +40,34 @@ export function isCoordinate(value: unknown): value is Coordinate {
   return Array.isArray(value) && value.length >= 2 && typeof value[0] === 'number' && typeof value[1] === 'number' && Number.isFinite(value[0]) && Number.isFinite(value[1]) && Math.abs(value[0]) <= 180 && Math.abs(value[1]) <= 90;
 }
 function nonnegative(value: unknown): value is number { return typeof value === 'number' && Number.isFinite(value) && value >= 0; }
+
+function parseSteps(value: unknown, routeDistance: number, start: Coordinate, end: Coordinate): RouteStep[] {
+  if (!Array.isArray(value) || value.length !== 1) throw new RouteError('response', 'Turn instructions are missing. Please calculate the route again.');
+  const raw = object(value[0])?.steps;
+  if (!Array.isArray(raw) || raw.length < 2 || raw.length > 5000) throw new RouteError('response', 'Turn instructions are missing. Please calculate the route again.');
+  const steps: RouteStep[] = [];
+  let pointCount = 0;
+  for (const entry of raw) {
+    const step = object(entry);
+    const maneuver = object(step?.maneuver);
+    const shape = object(step?.geometry);
+    const points = shape?.coordinates;
+    if (!step || !maneuver || !nonnegative(step.distance) || !nonnegative(step.duration) || !isCoordinate(maneuver.location) || typeof maneuver.type !== 'string' || !maneuver.type || maneuver.type.length > 60 || shape?.type !== 'LineString' || !Array.isArray(points) || points.length < 1 || points.length > 100_000 || !points.every(isCoordinate)) throw new RouteError('response', 'Turn instructions are unreadable. Please try again.');
+    pointCount += points.length;
+    if (step.distance > 1 && !points.some(point => distanceBetween(points[0], point) > 0.1)) throw new RouteError('response', 'Turn geometry is missing. Please try again.');
+    if (pointCount > 200_000 || distanceBetween(maneuver.location, points[0]) > 30) throw new RouteError('response', 'Turn instructions do not match the route. Please try again.');
+    if (steps.length && distanceBetween(steps[steps.length - 1].geometry.at(-1)!, points[0]) > 30) throw new RouteError('response', 'Turn instructions do not match the route. Please try again.');
+    steps.push({
+      name: typeof step.name === 'string' ? step.name.replace(/\s+/g, ' ').trim().slice(0, 160) : '',
+      distance: step.distance, duration: step.duration,
+      geometry: points.map(([lng, lat]) => [lng, lat]), location: [maneuver.location[0], maneuver.location[1]], type: maneuver.type,
+      modifier: typeof maneuver.modifier === 'string' && ['uturn', 'sharp right', 'right', 'slight right', 'straight', 'slight left', 'left', 'sharp left'].includes(maneuver.modifier) ? maneuver.modifier : undefined,
+      exit: typeof maneuver.exit === 'number' && Number.isInteger(maneuver.exit) && maneuver.exit > 0 && maneuver.exit < 100 ? maneuver.exit : undefined,
+    });
+  }
+  if (steps[0].type !== 'depart' || steps.at(-1)!.type !== 'arrive' || distanceBetween(steps[0].location, start) > 30 || distanceBetween(steps.at(-1)!.location, end) > 30 || Math.abs(steps.reduce((sum, step) => sum + step.distance, 0) - routeDistance) > Math.max(20, routeDistance * 0.02)) throw new RouteError('response', 'Turn instructions do not match the route. Please try again.');
+  return steps;
+}
 
 export function distanceBetween(a: Coordinate, b: Coordinate): number {
   const rad = Math.PI / 180;
@@ -59,7 +98,8 @@ export function parseRoute(payload: unknown, origin: Coordinate, destination: Co
   const points = coordinates.map(([lng, lat]) => [lng, lat] as Coordinate);
   const bounds: DrivingRoute['bounds'] = [180, 90, -180, -90];
   for (const [lng, lat] of points) { bounds[0] = Math.min(bounds[0], lng); bounds[1] = Math.min(bounds[1], lat); bounds[2] = Math.max(bounds[2], lng); bounds[3] = Math.max(bounds[3], lat); }
-  return { geometry: { type: 'LineString', coordinates: points }, distance: route.distance, duration: route.duration, origin: [...origin], destination: [...destination], start: [...start.location], end: [...end.location], startOffset, endOffset, calculatedAt, bounds };
+  const steps = parseSteps(route.legs, route.distance, start.location, end.location);
+  return { geometry: { type: 'LineString', coordinates: points }, distance: route.distance, duration: route.duration, origin: [...origin], destination: [...destination], start: [...start.location], end: [...end.location], startOffset, endOffset, calculatedAt, bounds, steps };
 }
 
 function abortError() { const error = new Error('Route cancelled'); error.name = 'AbortError'; return error; }
@@ -90,7 +130,7 @@ export function createRoutingClient({ endpoint = ROUTING_URL, fetcher = fetch, m
     try { url = new URL(endpoint); if (url.protocol !== 'https:') throw new Error(); }
     catch { throw new RouteError('configuration', 'Driving routes are not configured correctly.'); }
     url.pathname = `${url.pathname.replace(/\/$/, '')}/${pair}`;
-    for (const [key, value] of Object.entries({ overview: 'full', geometries: 'geojson', steps: 'false', alternatives: 'false', radiuses: '500;500', generate_hints: 'false' })) url.searchParams.set(key, value);
+    for (const [key, value] of Object.entries({ overview: 'full', geometries: 'geojson', steps: 'true', alternatives: 'false', radiuses: '500;500', generate_hints: 'false' })) url.searchParams.set(key, value);
     await wait(Math.max(0, nextRequestAt - now()), signal);
     if (signal?.aborted) throw abortError();
     nextRequestAt = now() + minimumIntervalMs;
